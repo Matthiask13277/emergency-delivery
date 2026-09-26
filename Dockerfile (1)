@@ -8,4 +8,4 @@ ENV PORT=3000
 ENV EMERGENCY_DB_DIR=/data/database
 ENV EMERGENCY_CONFIG_DIR=/data/config
 EXPOSE 3000
-CMD ["node","server.js"]
+CMD ["node","start-online.js"]
