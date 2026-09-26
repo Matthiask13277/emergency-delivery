@@ -130,6 +130,109 @@ async function bootstrap(){
     await pool.query("insert into users(username,name,role,password_hash) values($1,$2,$3,$4) on conflict(username) do nothing",[u[0],u[1],u[2],h]);
   }
   await pool.query("insert into vehicles(name,plate) values('Transporter 1','ED-001'),('Transporter 2','ED-002') on conflict(plate) do nothing");
-  https://emergency-delivery.emergency-delivery1.blitz.cloud done=true;
+ // ONLINE COMPATIBILITY SCHEMA
+  await runScript(`
+    CREATE TABLE IF NOT EXISTS orders(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_number text UNIQUE,
+      customer_id uuid REFERENCES customers(id),
+      status text DEFAULT 'new',
+      priority text DEFAULT 'normal',
+      planned_trip_id uuid REFERENCES trips(id) ON DELETE SET NULL,
+      planned_at timestamptz,
+      dispatch_note text,
+      created_at timestamptz DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_orders_customer
+      ON orders(customer_id);
+
+    CREATE INDEX IF NOT EXISTS idx_orders_planned_trip
+      ON orders(planned_trip_id);
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS planned_kg numeric;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS delivered_kg numeric;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS planned_pieces integer;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS planned_arrival_at timestamptz;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS actual_arrival_at timestamptz;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS route_arrival_at timestamptz;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS route_departure_at timestamptz;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS arrival_variance_min integer;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS arrival_radius_m integer;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS live_status text;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS lat numeric;
+
+    ALTER TABLE trip_stops
+      ADD COLUMN IF NOT EXISTS lng numeric;
+
+    CREATE TABLE IF NOT EXISTS vehicle_documents(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      vehicle_id uuid REFERENCES vehicles(id) ON DELETE CASCADE,
+      document_type text,
+      document_number text,
+      issued_at timestamptz,
+      expires_at timestamptz,
+      status text DEFAULT 'active',
+      note text,
+      created_at timestamptz DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_vehicle_documents_vehicle
+      ON vehicle_documents(vehicle_id);
+
+    CREATE TABLE IF NOT EXISTS email_outbox(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      recipient text,
+      subject text,
+      body text,
+      status text DEFAULT 'pending',
+      attempts integer DEFAULT 0,
+      last_error text,
+      created_at timestamptz DEFAULT now(),
+      sent_at timestamptz
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_communication_outbox(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      customer_id uuid REFERENCES customers(id) ON DELETE CASCADE,
+      channel text,
+      recipient text,
+      subject text,
+      body text,
+      status text DEFAULT 'pending',
+      attempts integer DEFAULT 0,
+      last_error text,
+      created_at timestamptz DEFAULT now(),
+      sent_at timestamptz
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_customer_communication_outbox_customer
+      ON customer_communication_outbox(customer_id);
+  `);
+
+  console.log("ONLINE COMPATIBILITY SCHEMA: bereit");
+
+  done=true; 
 }
 module.exports=bootstrap;
