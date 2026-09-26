@@ -130,6 +130,6 @@ async function bootstrap(){
     await pool.query("insert into users(username,name,role,password_hash) values($1,$2,$3,$4) on conflict(username) do nothing",[u[0],u[1],u[2],h]);
   }
   await pool.query("insert into vehicles(name,plate) values('Transporter 1','ED-001'),('Transporter 2','ED-002') on conflict(plate) do nothing");
-  done=true;
+  https://emergency-delivery.emergency-delivery1.blitz.cloud done=true;
 }
 module.exports=bootstrap;
