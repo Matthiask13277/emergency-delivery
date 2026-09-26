@@ -1,0 +1,16 @@
+EMERGENCY DELIVERY – BLITZ CLOUD UPLOAD
+
+Dieses Paket basiert auf Emergency Delivery V216.
+
+Wichtige Online-Korrektur:
+- Docker startet start-online.js statt server.js.
+- start-online.js wartet auf PostgreSQL und führt bootstrap-db.js vor dem Serverstart aus.
+- Danach wird server.js gestartet.
+
+Für blitz.cloud:
+1. Repository Matthiask13277/Notfalllieferung öffnen.
+2. Bestehende Dateien nicht einzeln ersetzen.
+3. Den Inhalt dieses Pakets als aktuellen Projektstand übernehmen.
+4. Danach den neuesten Code bauen.
+
+Demo-Zugänge bleiben wie im Projekt definiert.
