@@ -1,6 +1,6 @@
 {
   "name": "emergency-delivery-desktop",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -14,8 +14,8 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.emergencydelivery.current.v214",
-    "productName": "Emergency Delivery CURRENT 2.1.4",
+    "appId": "com.emergencydelivery.current.v215",
+    "productName": "Emergency Delivery CURRENT Desktop 2.1.5",
     "directories": {
       "output": "dist"
     },
@@ -33,7 +33,7 @@
           ]
         }
       ],
-      "artifactName": "ED-CURRENT-DESKTOP-2.1.4.${ext}"
+      "artifactName": "ED-CURRENT-DESKTOP-2.1.5.${ext}"
     },
     "asar": true
   },
