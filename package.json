@@ -39,7 +39,6 @@
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true
     },
-    "icon": "assets/emergency-delivery.ico",
     "asar": true
   },
   "dependencies": {
