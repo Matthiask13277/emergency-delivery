@@ -1,1 +1,30 @@
-{"name": "Emergency Delivery", "short_name": "Emergency Delivery", "start_url": "/", "display": "standalone", "background_color": "#f4f6f8", "theme_color": "#172033", "icons": []}
+{
+  "name": "Emergency Delivery",
+  "short_name": "Emergency Delivery",
+  "description": "Mobile Transportverwaltung für Emergency Delivery",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f4f6f8",
+  "theme_color": "#172033",
+  "lang": "de-DE",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/emergency-delivery-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/emergency-delivery-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
