@@ -300,18 +300,29 @@ async function st(id,s){
     return;
   }
   try{
-    await api("/api/trips/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:s})});
-    if(S?.trips){const t=S.trips.find(x=>x.id===id);if(t)t.status=s;}
-    localStorage.setItem("ed_state_v1",JSON.stringify(S));
-    await edSync();
-    load();
-  }catch(e){
-    edEnqueue(action);
-    const t=S?.trips?.find(x=>x.id===id);
-    if(t)t.status=s;
-    localStorage.setItem("ed_state_v1",JSON.stringify(S));
+    const r=await fetch("/api/trips/"+id,{
+      method:"PATCH",
+      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+      body:JSON.stringify({status:s})
+    });
+    const out=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(out.error||("Serverfehler "+r.status));
+    S=await refreshState();
     view("driver");
-    alert("Internet nicht verfügbar. Status lokal gespeichert.");
+    await edSync();
+    S=await refreshState();
+    view("driver");
+  }catch(e){
+    if(e instanceof TypeError || !navigator.onLine){
+      edEnqueue(action);
+      const t=S?.trips?.find(x=>x.id===id);
+      if(t)t.status=s;
+      localStorage.setItem("ed_state_v1",JSON.stringify(S));
+      view("driver");
+      alert("Internet nicht verfügbar. Status lokal gespeichert.");
+    }else{
+      alert("Status konnte nicht gespeichert werden: "+e.message);
+    }
   }
 }
 async function gps(id){
