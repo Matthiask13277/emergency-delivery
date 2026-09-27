@@ -229,7 +229,20 @@ async function bootstrap(){
 
     CREATE INDEX IF NOT EXISTS idx_customer_communication_outbox_customer
       ON customer_communication_outbox(customer_id);
-  `);
+  ALTER TABLE orders ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS reference text;
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS live_status text;
+
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS delivered_pieces integer;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS eta_at timestamptz;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS arrival_radius_m integer;
+
+ALTER TABLE email_outbox ADD COLUMN IF NOT EXISTS queued_at timestamptz;
+ALTER TABLE email_outbox ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz;
+
+ALTER TABLE customer_communication_outbox ADD COLUMN IF NOT EXISTS queued_at timestamptz;
+ALTER TABLE customer_communication_outbox ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz;`);
 
   console.log("ONLINE COMPATIBILITY SCHEMA: bereit");
 
