@@ -1,6 +1,6 @@
 {
   "name": "emergency-delivery-desktop",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -14,8 +14,8 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.emergencydelivery.app",
-    "productName": "Emergency Delivery",
+    "appId": "com.emergencydelivery.desktop",
+    "productName": "Emergency Delivery Desktop",
     "directories": {
       "output": "dist"
     },
