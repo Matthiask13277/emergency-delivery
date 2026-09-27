@@ -56,6 +56,7 @@ async function ensureCompanySettings(){
   await q(`INSERT INTO company_settings(id,company_name,country) VALUES(1,'Emergency Delivery','Italien') ON CONFLICT (id) DO NOTHING`);
 }
 app.use(express.static(path.join(__dirname,"public")));
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
 ensureV183Columns().catch(err=>console.error('V183 schema init failed:',err));
 ensureCompanySettings().catch(err=>console.error('Company settings init failed:',err));
