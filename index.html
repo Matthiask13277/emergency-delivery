@@ -263,8 +263,41 @@ async function calSave(ev){ev.preventDefault();const title=document.getElementBy
 async function calDelete(id){if(!confirm('Termin wirklich löschen?'))return;await api('/api/calendar/events/'+id,{method:'DELETE'});calClose();alert('Termin gelöscht.');await calendarLoad()}
 async function trip(){const weight=Number(document.getElementById("w").value||0),priceNet=Number(document.getElementById("price").value||0);if(weight>1000)return alert("Maximal 1.000 KG");if(priceNet<0)return alert("Preis darf nicht negativ sein");await api("/api/trips",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customerId:document.getElementById("tc").value,weightKg:weight,route:document.getElementById("rt").value,driverId:document.getElementById("dr").value,vehicleId:document.getElementById("ve").value,pieces:Number(document.getElementById("pc").value||1),priceNet,notes:document.getElementById("nt").value})});await refreshState();view("dispatch")}
 async function opt(){let ids=[...tripsel.selectedOptions].map(x=>x.value);let r=await api("/api/routes/optimize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tripIds:ids,origin:org.value,destination:dst.value})});optout.innerHTML="<p>"+r.ordered.map(x=>x.position+". "+x.tripNumber+" · "+(x.city||"")).join("<br>")+"</p><button class='btn' onclick=\"window.open('"+r.mapsUrl+"','_blank')\">Google Maps öffnen</button>"}
-async function st(id,s){await api("/api/trips/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:s})});load()}
-async function gps(id){if(!navigator.geolocation)return alert("GPS nicht verfügbar");navigator.geolocation.getCurrentPosition(async p=>{await api("/api/gps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tripId:id,lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy})});alert("GPS gespeichert")},e=>alert(e.message),{enableHighAccuracy:true})}
+async function st(id,s){
+  const action={type:"status",tripId:id,status:s};
+  if(!navigator.onLine){
+    edEnqueue(action);
+    alert("Status lokal gespeichert – wird synchronisiert, sobald wieder Internet verfügbar ist.");
+    return;
+  }
+  try{
+    await api("/api/trips/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:s})});
+    await edSync();
+    load();
+  }catch(e){
+    edEnqueue(action);
+    alert("Internet nicht verfügbar. Status lokal gespeichert.");
+  }
+}
+async function gps(id){
+  if(!navigator.geolocation)return alert("GPS nicht verfügbar");
+  navigator.geolocation.getCurrentPosition(async p=>{
+    const action={type:"gps",tripId:id,lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};
+    if(!navigator.onLine){
+      edEnqueue(action);
+      alert("GPS lokal gespeichert – wird synchronisiert, sobald wieder Internet verfügbar ist.");
+      return;
+    }
+    try{
+      await api("/api/gps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tripId:id,lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy})});
+      await edSync();
+      alert("GPS gespeichert");
+    }catch(e){
+      edEnqueue(action);
+      alert("Internet nicht verfügbar. GPS lokal gespeichert.");
+    }
+  },e=>alert(e.message),{enableHighAccuracy:true})
+}
 function nav(r){window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(r),"_blank")}
 function canvas(id){let x=document.getElementById("sig-"+id),c=x.getContext("2d"),d=false;x.onpointerdown=e=>{d=true;c.beginPath();c.moveTo(e.offsetX,e.offsetY)};x.onpointermove=e=>{if(d){c.lineTo(e.offsetX,e.offsetY);c.stroke()}};x.onpointerup=()=>d=false}
 async function save(id){let x=document.getElementById("sig-"+id);await api("/api/trips/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({signature_data:x.toDataURL("image/png"),signature_at:new Date().toISOString()})});alert("Unterschrift gespeichert")}

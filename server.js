@@ -268,23 +268,43 @@ app.patch("/api/stops/:id",auth,async(req,res)=>{
 });
 app.post("/api/sync",auth,async(req,res)=>{
   const results=[];
-  for(const a of (req.body.actions||[])){
+  for(const a of (Array.isArray(req.body?.actions)?req.body.actions:[])){
     try{
-      if(a.type==="gps" && req.user.role==="Driver"){
+      if(!a?.id || !a?.type) throw new Error("Ungültige Sync-Aktion");
+
+      if(a.type==="gps"){
+        const t=(await q("SELECT id,driver_id FROM trips WHERE id=$1",[a.tripId]))[0];
+        if(!t) throw new Error("Tour nicht gefunden");
+        if(req.user.role!=="Driver" || t.driver_id!==req.user.id)
+          throw new Error("Keine Berechtigung für GPS dieser Tour");
         await q("INSERT INTO gps_points(trip_id,driver_id,lat,lng,accuracy) VALUES($1,$2,$3,$4,$5)",
           [a.tripId,req.user.id,a.lat,a.lng,a.accuracy||null]);
         await q("UPDATE trips SET current_lat=$1,current_lng=$2,updated_at=NOW() WHERE id=$3",
           [a.lat,a.lng,a.tripId]);
+
       } else if(a.type==="status"){
-        const t=(await q("SELECT * FROM trips WHERE id=$1",[a.tripId]))[0];
-        if(t && (req.user.role!=="Driver" || t.driver_id===req.user.id))
-          await q("UPDATE trips SET status=$1,updated_at=NOW() WHERE id=$2",[a.status,a.tripId]);
+        const t=(await q("SELECT id,driver_id FROM trips WHERE id=$1",[a.tripId]))[0];
+        if(!t) throw new Error("Tour nicht gefunden");
+        if(req.user.role==="Driver" && t.driver_id!==req.user.id)
+          throw new Error("Keine Berechtigung für diese Tour");
+        await q("UPDATE trips SET status=$1,updated_at=NOW() WHERE id=$2",[a.status,a.tripId]);
+
       } else if(a.type==="stop"){
+        const s=(await q("SELECT ts.id,t.driver_id FROM trip_stops ts JOIN trips t ON t.id=ts.trip_id WHERE ts.id=$1",[a.stopId]))[0];
+        if(!s) throw new Error("Stop nicht gefunden");
+        if(req.user.role==="Driver" && s.driver_id!==req.user.id)
+          throw new Error("Keine Berechtigung für diesen Stop");
         await q("UPDATE trip_stops SET status=$1,arrived_at=CASE WHEN $1='Arrived' THEN NOW() ELSE arrived_at END,delivered_at=CASE WHEN $1='Delivered' THEN NOW() ELSE delivered_at END WHERE id=$2",
           [a.status,a.stopId]);
+
+      } else {
+        throw new Error("Unbekannter Sync-Typ");
       }
+
       results.push({id:a.id,ok:true});
-    }catch(e){results.push({id:a.id,ok:false,error:e.message});}
+    }catch(e){
+      results.push({id:a?.id,ok:false,error:e.message});
+    }
   }
   res.json({results});
 });
