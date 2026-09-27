@@ -307,11 +307,13 @@ async function st(id,s){
     });
     const out=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(out.error||("Serverfehler "+r.status));
-    S=await refreshState();
+    if(S?.trips){
+      const t=S.trips.find(x=>x.id===id);
+      if(t)t.status=s;
+    }
+    localStorage.setItem("ed_state_v1",JSON.stringify(S));
     view("driver");
-    await edSync();
-    S=await refreshState();
-    view("driver");
+    if(window.navigator.onLine) await edSync();
   }catch(e){
     if(e instanceof TypeError || !navigator.onLine){
       edEnqueue(action);
