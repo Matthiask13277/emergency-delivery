@@ -4,7 +4,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=8080
 ENV EMERGENCY_DB_DIR=/data/database
 ENV EMERGENCY_CONFIG_DIR=/data/config
 EXPOSE 3000
