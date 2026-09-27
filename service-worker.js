@@ -1,8 +1,11 @@
 
-const CACHE = "emergency-delivery-mobile-v208";
+const CACHE = "emergency-delivery-mobile-v211";
 const APP_SHELL = [
   "/",
-  "/manifest.webmanifest"
+  "/index.html",
+  "/sync.js",
+  "/manifest.webmanifest",
+  "/service-worker.js"
 ];
 
 self.addEventListener("install", event => {

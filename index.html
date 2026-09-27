@@ -145,7 +145,32 @@ let S=null,T=localStorage.edv10||"";const root=document.getElementById("root");
 async function api(u,o={}){o.headers={...(o.headers||{}),Authorization:"Bearer "+T};let r=await fetch(u,o);if(r.status===401){T="";localStorage.removeItem("edv10");loginView();throw 0}return r.json()}
 function loginView(){root.innerHTML='<div class="login panel"><div class="brand">Emergency Delivery</div><p class="muted">Emergency Delivery · Anmeldung</p><input id="un" placeholder="Benutzername"><br><br><input id="pw" type="password" placeholder="Passwort"><br><br><button class="btn" onclick="login()">Anmelden</button><p class="muted">admin/admin123 · dispatcher/dispatch123 · driver/driver123 · accounting/account123</p></div>'}
 async function login(){let r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:un.value,password:pw.value})}),x=await r.json();if(!r.ok)return alert(x.error);T=x.token;localStorage.edv10=T;load()}
-async function load(){S=await api("/api/state");S.company=S.company||{};window.currentUser=S.user;view("dashboard")}async function refreshState(){const oldPage=window.currentPage;S=await api("/api/state");S.company=S.company||{};window.currentUser=S.user;return S}
+async function load(){
+  try{
+    S=await api("/api/state");
+    S.company=S.company||{};
+    localStorage.setItem("ed_state_v1",JSON.stringify(S));
+  }catch(e){
+    const cached=localStorage.getItem("ed_state_v1");
+    if(!cached) throw e;
+    S=JSON.parse(cached);
+  }
+  window.currentUser=S.user;
+  view("dashboard");
+}
+async function refreshState(){
+  const oldPage=window.currentPage;
+  try{
+    S=await api("/api/state");
+    S.company=S.company||{};
+    localStorage.setItem("ed_state_v1",JSON.stringify(S));
+  }catch(e){
+    const cached=localStorage.getItem("ed_state_v1");
+    if(cached) S=JSON.parse(cached); else throw e;
+  }
+  window.currentUser=S.user;
+  return S;
+}
 function goTo(id){
   window.scrollTo({top:0,left:0,behavior:"smooth"});
   const e=document.getElementById(id);
@@ -267,15 +292,25 @@ async function st(id,s){
   const action={type:"status",tripId:id,status:s};
   if(!navigator.onLine){
     edEnqueue(action);
+    const t=S?.trips?.find(x=>x.id===id);
+    if(t)t.status=s;
+    localStorage.setItem("ed_state_v1",JSON.stringify(S));
+    view("driver");
     alert("Status lokal gespeichert – wird synchronisiert, sobald wieder Internet verfügbar ist.");
     return;
   }
   try{
     await api("/api/trips/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:s})});
+    if(S?.trips){const t=S.trips.find(x=>x.id===id);if(t)t.status=s;}
+    localStorage.setItem("ed_state_v1",JSON.stringify(S));
     await edSync();
     load();
   }catch(e){
     edEnqueue(action);
+    const t=S?.trips?.find(x=>x.id===id);
+    if(t)t.status=s;
+    localStorage.setItem("ed_state_v1",JSON.stringify(S));
+    view("driver");
     alert("Internet nicht verfügbar. Status lokal gespeichert.");
   }
 }
