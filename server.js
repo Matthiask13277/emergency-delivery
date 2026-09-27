@@ -3,6 +3,13 @@ require("dotenv").config();
 const express=require("express"),path=require("path"),bcrypt=require("bcryptjs"),jwt=require("jsonwebtoken");
 const {pool}=require("./local-db.js");
 const app=express(),PORT=process.env.PORT||3000,JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
+app.use((req,res,next)=>{
+  res.header("Access-Control-Allow-Origin","*");
+  res.header("Access-Control-Allow-Methods","GET,POST,PATCH,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers","Content-Type, Authorization");
+  if(req.method==="OPTIONS") return res.sendStatus(204);
+  next();
+});
 const fs=require("fs");
 const smtpConfigDir=process.env.EMERGENCY_CONFIG_DIR||path.join(__dirname,"config");
 const smtpConfigFile=path.join(smtpConfigDir,"smtp.json");
