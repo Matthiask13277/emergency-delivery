@@ -24,14 +24,15 @@ async function edSync() {
 
   const q = edQueue();
 
-  if (!q.length || !window.T) return;
+  const token = localStorage.edv10 || "";
+if (!q.length || !token) return;
 
   try {
     const r = await fetch("/api/sync", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + window.T
+        "Authorization": "Bearer " + token
       },
       body: JSON.stringify({
         actions: q
