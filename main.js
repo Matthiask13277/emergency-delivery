@@ -57,10 +57,10 @@ async function prepare(){
 }
 async function createWindow(){
   try{await prepare();}
-  catch(e){await dialog.showMessageBox({type:"error",title:"Emergency Delivery Desktop 2.0.9 – Startfehler",message:e.message,detail:"Die lokale Datenbank konnte nicht initialisiert werden."});app.quit();return}
-  const win=new BrowserWindow({title:"Emergency Delivery Desktop 2.0.9",width:1440,height:900,minWidth:1100,minHeight:700,autoHideMenuBar:true,backgroundColor:"#ffffff",webPreferences:{contextIsolation:true,nodeIntegration:false}});
+  catch(e){await dialog.showMessageBox({type:"error",title:"Emergency Delivery Desktop 2.1.0 – Startfehler",message:e.message,detail:"Die lokale Datenbank konnte nicht initialisiert werden."});app.quit();return}
+  const win=new BrowserWindow({title:"Emergency Delivery Desktop 2.1.0",width:1440,height:900,minWidth:1100,minHeight:700,autoHideMenuBar:true,backgroundColor:"#ffffff",webPreferences:{contextIsolation:true,nodeIntegration:false}});
   win.webContents.on("did-fail-load",(_e,code,desc,url)=>console.error("Load failed:",code,desc,url));
-  await win.loadURL(`http://127.0.0.1:${process.env.PORT}/`);
+  await win.loadURL(`http://127.0.0.1:${process.env.PORT}/desktop-current.html`);
 }
 app.whenReady().then(createWindow);
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
