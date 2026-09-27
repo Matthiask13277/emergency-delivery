@@ -1,6 +1,6 @@
 {
   "name": "emergency-delivery-desktop",
-  "version": "2.0.9",
+  "version": "2.1.0",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -14,8 +14,8 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.emergencydelivery.desktop.v209",
-    "productName": "Emergency Delivery Desktop 2.0.9",
+    "appId": "com.emergencydelivery.desktop.v210",
+    "productName": "Emergency Delivery Desktop 2.1.0",
     "directories": {
       "output": "dist"
     },
@@ -28,12 +28,12 @@
       "target": [
         "nsis"
       ],
-      "artifactName": "Emergency-Delivery-Desktop-2.0.9.${ext}"
+      "artifactName": "Emergency-Delivery-Desktop-2.1.0.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Emergency Delivery Desktop 2.0.9",
+      "shortcutName": "Emergency Delivery Desktop 2.1.0",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
