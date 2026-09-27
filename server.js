@@ -64,7 +64,8 @@ async function ensureCompanySettings(){
 }
 app.use(express.static(path.join(__dirname,"public")));
 app.get("/sync.js",(req,res)=>res.sendFile(path.join(__dirname,"sync.js")));
-app.get("/desktop-current.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-current.html")));\napp.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+app.get("/desktop-current.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-current.html")));
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
 ensureV183Columns().catch(err=>console.error('V183 schema init failed:',err));
 ensureCompanySettings().catch(err=>console.error('Company settings init failed:',err));
