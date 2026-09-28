@@ -164,6 +164,9 @@ async function api(u,o={}){
     throw new Error("OFFLINE_MUTATION");
   }
   const data=await r.json();
+  if(!r.ok){
+    throw new Error(data?.error||("HTTP "+r.status));
+  }
   if(data && data.offlineToken){
     OT=data.offlineToken;
     localStorage.edv10_offline=OT;
@@ -633,7 +636,7 @@ async function saveTripEdit(id){
 async function openCustomerFile(id){view("customers");setTimeout(()=>loadCustomer360(id),0)}
 async function loadCustomer360(id){
  const box=document.getElementById("customerFileBox")||document.getElementById("customer360Box");if(!box)return;
- try{const d=await api("/api/customers/"+id+"/360");box.innerHTML=`<div class="page-head"><div><div class="eyebrow">KUNDENAKTE</div><h2>${esc(d.customer.company||"")}</h2><p class="muted">${esc(d.customer.contact_name||"Kein Ansprechpartner")} · ${esc(d.customer.city||"")}</p></div><button class="btn primary" onclick="openCustomer('${id}')">Kunde bearbeiten</button></div><div class="grid">
+ try{const d=await api("/api/customers/"+id+"/360");if(!d?.customer)throw new Error(d?.error||"Kundenakte konnte nicht geladen werden.");box.innerHTML=`<div class="page-head"><div><div class="eyebrow">KUNDENAKTE</div><h2>${esc(d.customer.company||"")}</h2><p class="muted">${esc(d.customer.contact_name||"Kein Ansprechpartner")} · ${esc(d.customer.city||"")}</p></div><button class="btn primary" onclick="openCustomer('${id}')">Kunde bearbeiten</button></div><div class="grid">
  <div class="stat"><span>Rechnungsvolumen</span><b>€ ${Number(d.totals.total_billed||0).toFixed(2)}</b></div>
  <div class="stat"><span>Offen</span><b>€ ${Number(d.totals.outstanding||0).toFixed(2)}</b></div>
  <div class="stat"><span>Aufträge</span><b>${d.orders.length}</b></div><div class="stat"><span>DDT</span><b>${d.ddts.length}</b></div></div>
