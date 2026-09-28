@@ -23,6 +23,41 @@ function smtpTransport(){
 }
 app.use(express.json({limit:"12mb"}));
 
+const DESKTOP_CLOUD_URL=String(process.env.EMERGENCY_CLOUD_URL||"").replace(/\\/+$/,"");
+const DESKTOP_CLOUD_TIMEOUT=Number(process.env.EMERGENCY_CLOUD_TIMEOUT_MS||8000);
+
+async function desktopCloudProxy(req,res,next){
+  if(!DESKTOP_CLOUD_URL || !req.path.startsWith("/api/")) return next();
+  const target=DESKTOP_CLOUD_URL+req.originalUrl;
+  const headers={};
+  for(const [k,v] of Object.entries(req.headers||{})){
+    if(["host","content-length","connection","accept-encoding"].includes(k)) continue;
+    headers[k]=v;
+  }
+  const init={method:req.method,headers,redirect:"manual"};
+  if(!["GET","HEAD"].includes(req.method)) init.body=JSON.stringify(req.body??{});
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),DESKTOP_CLOUD_TIMEOUT);
+  init.signal=controller.signal;
+  try{
+    const upstream=await fetch(target,init);
+    const data=Buffer.from(await upstream.arrayBuffer());
+    res.status(upstream.status);
+    upstream.headers.forEach((v,k)=>{
+      if(!["content-encoding","transfer-encoding","connection"].includes(k)) res.setHeader(k,v);
+    });
+    return res.send(data);
+  }catch(e){
+    console.warn("Desktop cloud proxy unavailable; using local backend.",String(e));
+    return next();
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+app.get("/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(__dirname,"emergency-delivery-logo.png")));
+app.use(desktopCloudProxy);
+
 async function ensureV183Columns(){
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email text`);

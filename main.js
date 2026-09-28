@@ -22,6 +22,8 @@ async function prepare(){
   process.env.JWT_SECRET=process.env.JWT_SECRET||"emergency-delivery-local-v164";
   process.env.EMERGENCY_DB_DIR=path.join(app.getPath("userData"),"database");
   process.env.EMERGENCY_CONFIG_DIR=path.join(app.getPath("userData"),"config");
+  process.env.EMERGENCY_CLOUD_URL=process.env.EMERGENCY_CLOUD_URL||"https://emergency-delivery.emergency-delivery1.blitz.cloud";
+  process.env.EMERGENCY_CLOUD_TIMEOUT_MS=process.env.EMERGENCY_CLOUD_TIMEOUT_MS||"8000";
   const fs=require("fs");
   const smtpDir=process.env.EMERGENCY_CONFIG_DIR;
   const smtpFile=path.join(smtpDir,"smtp.json");
@@ -54,7 +56,7 @@ async function createWindow(){
   catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.1.7 – Startfehler",
+      title:"Emergency Delivery Desktop 2.1.8 – Startfehler",
       message:e.message,
       detail:"Die lokale Datenbank konnte nicht initialisiert werden."
     });
@@ -63,7 +65,7 @@ async function createWindow(){
   }
 
   const win=new BrowserWindow({
-    title:"Emergency Delivery CURRENT 2.1.7",
+    title:"Emergency Delivery CURRENT 2.1.8",
     width:1440,
     height:900,
     minWidth:1100,
@@ -73,7 +75,7 @@ async function createWindow(){
     webPreferences:{
       contextIsolation:true,
       nodeIntegration:false,
-      partition:"desktop-current-v217"
+      partition:"desktop-current-v218"
     }
   });
 
@@ -89,7 +91,7 @@ async function createWindow(){
   }catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.1.7 – Ladefehler",
+      title:"Emergency Delivery Desktop 2.1.8 – Ladefehler",
       message:"Die Desktop-Oberfläche konnte nicht geladen werden.",
       detail:String(e.stack||e)
     });
