@@ -3007,10 +3007,10 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
     const r=await q(\`insert into customers(
       company,vat_id,address,postal_code,city,country,email,phone,lat,lng,customer_number,contact_name,mobile,website,
       billing_address,billing_postal_code,billing_city,payment_terms_days,preferred_language,notes,delivery_instructions
-    ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *\`,
-      [b.company,b.vat_id||null,b.address||null,b.city||null,b.email||null,b.phone||null,b.lat||null,b.lng||null,
-       b.customer_number||null,b.contact_name||null,b.mobile||null,b.website||null,b.billing_address||null,
-       b.billing_postal_code||null,b.billing_city||null,(b.payment_terms_days===""||b.payment_terms_days==null)?null:Number(b.payment_terms_days),
+    ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *\`,
+      [b.company,b.vat_id||null,b.address||null,b.postal_code||null,b.city||null,b.country||null,b.email||null,b.phone||null,b.lat||null,b.lng||null,
+       b.customer_number||null,b.contact_name||null,b.mobile||null,b.website||null,b.billing_address||null,b.billing_postal_code||null,
+       b.billing_city||null,(b.payment_terms_days===""||b.payment_terms_days==null)?null:Number(b.payment_terms_days),
        b.preferred_language||null,b.notes||null,b.delivery_instructions||null]);
     await audit(req,"CUSTOMER_CREATED",r[0].company);
     res.json(r[0])
@@ -3020,16 +3020,16 @@ app.patch("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accountin
   try{
     const b=req.body||{}, id=req.params.id;
     const r=await q(\`update customers set
-      company=coalesce($1,company),vat_id=coalesce($2,vat_id),address=coalesce($3,address),city=coalesce($4,city),
-      email=coalesce($5,email),phone=coalesce($6,phone),lat=coalesce($7,lat),lng=coalesce($8,lng),
-      customer_number=coalesce($9,customer_number),contact_name=coalesce($10,contact_name),mobile=coalesce($11,mobile),
-      website=coalesce($12,website),billing_address=coalesce($13,billing_address),billing_postal_code=coalesce($14,billing_postal_code),
-      billing_city=coalesce($15,billing_city),payment_terms_days=coalesce($16,payment_terms_days),
-      preferred_language=coalesce($17,preferred_language),notes=coalesce($18,notes),delivery_instructions=coalesce($19,delivery_instructions)
-      where id=$20 returning *\`,
-      [b.company,b.vat_id,b.address,b.city,b.email,b.phone,b.lat,b.lng,b.customer_number,b.contact_name,b.mobile,b.website,
-       b.billing_address,b.billing_postal_code,b.billing_city,
-       b.payment_terms_days===""?null:(b.payment_terms_days==null?null:Number(b.payment_terms_days)),
+      company=coalesce($1,company),vat_id=coalesce($2,vat_id),address=coalesce($3,address),postal_code=coalesce($4,postal_code),
+      city=coalesce($5,city),country=coalesce($6,country),email=coalesce($7,email),phone=coalesce($8,phone),
+      lat=coalesce($9,lat),lng=coalesce($10,lng),customer_number=coalesce($11,customer_number),
+      contact_name=coalesce($12,contact_name),mobile=coalesce($13,mobile),website=coalesce($14,website),
+      billing_address=coalesce($15,billing_address),billing_postal_code=coalesce($16,billing_postal_code),
+      billing_city=coalesce($17,billing_city),payment_terms_days=coalesce($18,payment_terms_days),
+      preferred_language=coalesce($19,preferred_language),notes=coalesce($20,notes),delivery_instructions=coalesce($21,delivery_instructions)
+      where id=$22 returning *\`,
+      [b.company,b.vat_id,b.address,b.postal_code,b.city,b.country,b.email,b.phone,b.lat,b.lng,b.customer_number,b.contact_name,b.mobile,b.website,
+       b.billing_address,b.billing_postal_code,b.billing_city,b.payment_terms_days===""?null:(b.payment_terms_days==null?null:Number(b.payment_terms_days)),
        b.preferred_language,b.notes,b.delivery_instructions,id]);
     if(!r.length)return res.status(404).json({error:"Kunde nicht gefunden"});
     await audit(req,"CUSTOMER_UPDATED",r[0].company);
