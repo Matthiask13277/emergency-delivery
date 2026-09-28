@@ -280,9 +280,9 @@ if(p==="vehicles"){c.innerHTML=`<div class="page-head"><div><div class="eyebrow"
 if(p==="live")c.innerHTML=`<div class="panel"><h2>Live-Fahrzeuge</h2><p class="muted">Positionen werden automatisch alle 10 Sekunden aktualisiert.</p><div class="live" id="livebox"></div></div>`; if(p==="live"){live();setInterval(live,10000)}
 if(p==="driver"){let m=S.trips.filter(t=>t.driver_id===S.user.id);c.innerHTML=`<div class="panel"><h2>Fahrer-App</h2>${m.map(t=>`<div class="panel"><b>${t.trip_number}</b> · ${t.route||""}<p>${t.weight_kg} KG · ${t.status}</p><div class="row"><button class="btn" onclick="st('${t.id}','In Transit')">Unterwegs</button><button class="btn" onclick="st('${t.id}','Delivered')">Geliefert</button><button class="btn secondary" onclick="gps(this.dataset.id)" data-id="${t.id}">GPS aktualisieren</button><button class="btn secondary" onclick="nav('${t.route||""}')">Navigation</button></div>${t.status==="Delivered"?`<h4>Unterschrift</h4><canvas class="sig" id="sig-${t.id}" width="700" height="180"></canvas><br><button class="btn" onclick="save('${t.id}')">Unterschrift speichern</button>`:""}</div>`).join("")||"Keine Fahrten."}</div>`;m.filter(t=>t.status==="Delivered").forEach(t=>canvas(t.id))}
 if(p==="customers"){
-  c.innerHTML=\`<div class="page-head"><div><div class="eyebrow">STAMMDATEN</div><h2>Kunden & Kundenakte</h2><p class="muted">Stammdaten, Ansprechpartner, Lieferhinweise, Aufträge, Lieferscheine und Rechnungen an einer Stelle.</p></div><button class="btn primary" onclick="openCustomer()">+ Kunde hinzufügen</button></div>
+  c.innerHTML=`<div class="page-head"><div><div class="eyebrow">STAMMDATEN</div><h2>Kunden & Kundenakte</h2><p class="muted">Stammdaten, Ansprechpartner, Lieferhinweise, Aufträge, Lieferscheine und Rechnungen an einer Stelle.</p></div><button class="btn primary" onclick="openCustomer()">+ Kunde hinzufügen</button></div>
   <div class="panel"><div id="customerList">Lade Kunden…</div></div>
-  <div id="customerFileBox" class="panel"><p class="muted">Klicke bei einem Kunden auf „Akte“, um alle Details zu sehen.</p></div>\`;
+  <div id="customerFileBox" class="panel"><p class="muted">Klicke bei einem Kunden auf „Akte“, um alle Details zu sehen.</p></div>`;
   loadCustomersManage(); return;
 }
 if(p==="invoices")c.innerHTML=`<div class="page-head"><div><div class="eyebrow">FINANZEN</div><h2>Rechnungen</h2><p class="muted">Rechnungen automatisch oder manuell erstellen und bearbeiten.</p></div><button class="btn primary" onclick="openInvoice()">+ Rechnung erstellen</button></div><div class="panel"><table><tr><th>Nr.</th><th>Kunde</th><th>Netto</th><th>Brutto</th><th>Status</th><th>Aktionen</th></tr>${S.invoices.map(i=>{const cu=S.customers.find(c=>c.id===i.customer_id);return `<tr><td>${i.invoice_number}</td><td>${esc(cu?.company||"")}</td><td>€ ${Number(i.net).toFixed(2)}</td><td>€ ${Number(i.gross).toFixed(2)}</td><td>${i.status}</td><td><button class="btn secondary" onclick="editInvoice('${i.id}')">Bearbeiten</button> <button class="btn secondary" onclick="previewPdf('invoice','${i.id}')">PDF Vorschau</button> <button class="btn secondary" onclick="inv('${i.id}')">PDF</button></td></tr>`}).join("")}</table></div>`;
@@ -342,7 +342,7 @@ function calClose(){document.getElementById('calModal')?.remove()}
 async function calSave(ev){ev.preventDefault();const title=document.getElementById('calTitle'),description=document.getElementById('calDescription'),startDate=document.getElementById('calStartDate'),startTime=document.getElementById('calStartTime'),endDate=document.getElementById('calEndDate'),endTime=document.getElementById('calEndTime'),allDay=document.getElementById('calAllDay'),location=document.getElementById('calLocation'),type=document.getElementById('calType');const b={title:title.value.trim(),description:description.value,startDate:startDate.value,startTime:allDay.checked?null:(startTime.value||null),endDate:endDate.value||startDate.value,endTime:allDay.checked?null:(endTime.value||null),allDay:allDay.checked,location:location.value.trim(),eventType:type.value};if(!b.title)return alert('Titel ist erforderlich.');if(!b.startDate)return alert('Startdatum ist erforderlich.');if(b.endDate<b.startDate)return alert('Das Enddatum darf nicht vor dem Startdatum liegen.');await api(calEditId?`/api/calendar/events/${calEditId}`:'/api/calendar/events',{method:calEditId?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});calMonth=new Date(Number(b.startDate.slice(0,4)),Number(b.startDate.slice(5,7))-1,1);calClose();alert(calEditId?'Termin aktualisiert.':'Termin gespeichert.');await calendarLoad()}
 async function calDelete(id){if(!confirm('Termin wirklich löschen?'))return;await api('/api/calendar/events/'+id,{method:'DELETE'});calClose();alert('Termin gelöscht.');await calendarLoad()}
 async function trip(){const weight=Number(document.getElementById("w").value||0),priceNet=Number(document.getElementById("price").value||0);if(weight>1000)return alert("Maximal 1.000 KG");if(priceNet<0)return alert("Preis darf nicht negativ sein");await api("/api/trips",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customerId:document.getElementById("tc").value,weightKg:weight,route:document.getElementById("rt").value,driverId:document.getElementById("dr").value,vehicleId:document.getElementById("ve").value,pieces:Number(document.getElementById("pc").value||1),priceNet,notes:document.getElementById("nt").value})});await refreshState();view("dispatch")}
-async async function opt(){
+async function opt(){
   const ids=[...document.getElementById("tripsel").selectedOptions].map(x=>x.value);
   if(!ids.length)return alert("Bitte mindestens einen Auftrag auswählen.");
   try{
@@ -528,30 +528,30 @@ async function loadCustomersManage(){
 }
 function openCustomer(id){
   const x=(window.customerCache||[]).find(v=>v.id===id)||{};
-  modal(\`<h2>\${id?"Kunde bearbeiten":"Kunde hinzufügen"}</h2>
+  modal(`<h2>${id?"Kunde bearbeiten":"Kunde hinzufügen"}</h2>
     <div class="form form-2">
-      <label>Kundennummer<input id="cuNumber" value="\${esc(x.customer_number)}"></label>
-      <label>Firma *<input id="cuCompany" value="\${esc(x.company)}"></label>
-      <label>P.IVA / USt-IdNr.<input id="cuVat" value="\${esc(x.vat_id)}"></label>
-      <label>Ansprechpartner<input id="cuContact" value="\${esc(x.contact_name)}"></label>
-      <label>E-Mail<input id="cuEmail" type="email" value="\${esc(x.email)}"></label>
-      <label>Telefon<input id="cuPhone" value="\${esc(x.phone)}"></label>
-      <label>Mobil<input id="cuMobile" value="\${esc(x.mobile)}"></label>
-      <label>Website<input id="cuWebsite" value="\${esc(x.website)}"></label>
-      <label>Straße / Hausnummer<input id="cuAddress" value="\${esc(x.address)}"></label>
-      <label>PLZ<input id="cuPostal" value="\${esc(x.postal_code||"")}"></label>
-      <label>Ort<input id="cuCity" value="\${esc(x.city)}"></label>
-      <label>Land<input id="cuCountry" value="\${esc(x.country||"")}"></label>
-      <label>Rechnungsadresse<input id="cuBillAddress" value="\${esc(x.billing_address)}"></label>
-      <label>Rechnungs-PLZ<input id="cuBillPostal" value="\${esc(x.billing_postal_code)}"></label>
-      <label>Rechnungsort<input id="cuBillCity" value="\${esc(x.billing_city)}"></label>
-      <label>Zahlungsziel (Tage)<input id="cuTerms" type="number" min="0" value="\${esc(x.payment_terms_days??"")}"></label>
-      <label>Sprache<select id="cuLanguage"><option value="">– bitte wählen –</option><option value="de" \${x.preferred_language==="de"?"selected":""}>Deutsch</option><option value="it" \${x.preferred_language==="it"?"selected":""}>Italienisch</option><option value="en" \${x.preferred_language==="en"?"selected":""}>Englisch</option></select></label>
-      <label>Bevorzugter Kontakt<select id="cuDelay"><option value="email">E-Mail</option><option value="sms" \${x.preferred_delay_channel==="sms"?"selected":""}>SMS</option><option value="whatsapp" \${x.preferred_delay_channel==="whatsapp"?"selected":""}>WhatsApp</option></select></label>
+      <label>Kundennummer<input id="cuNumber" value="${esc(x.customer_number)}"></label>
+      <label>Firma *<input id="cuCompany" value="${esc(x.company)}"></label>
+      <label>P.IVA / USt-IdNr.<input id="cuVat" value="${esc(x.vat_id)}"></label>
+      <label>Ansprechpartner<input id="cuContact" value="${esc(x.contact_name)}"></label>
+      <label>E-Mail<input id="cuEmail" type="email" value="${esc(x.email)}"></label>
+      <label>Telefon<input id="cuPhone" value="${esc(x.phone)}"></label>
+      <label>Mobil<input id="cuMobile" value="${esc(x.mobile)}"></label>
+      <label>Website<input id="cuWebsite" value="${esc(x.website)}"></label>
+      <label>Straße / Hausnummer<input id="cuAddress" value="${esc(x.address)}"></label>
+      <label>PLZ<input id="cuPostal" value="${esc(x.postal_code||"")}"></label>
+      <label>Ort<input id="cuCity" value="${esc(x.city)}"></label>
+      <label>Land<input id="cuCountry" value="${esc(x.country||"")}"></label>
+      <label>Rechnungsadresse<input id="cuBillAddress" value="${esc(x.billing_address)}"></label>
+      <label>Rechnungs-PLZ<input id="cuBillPostal" value="${esc(x.billing_postal_code)}"></label>
+      <label>Rechnungsort<input id="cuBillCity" value="${esc(x.billing_city)}"></label>
+      <label>Zahlungsziel (Tage)<input id="cuTerms" type="number" min="0" value="${esc(x.payment_terms_days??"")}"></label>
+      <label>Sprache<select id="cuLanguage"><option value="">– bitte wählen –</option><option value="de" ${x.preferred_language==="de"?"selected":""}>Deutsch</option><option value="it" ${x.preferred_language==="it"?"selected":""}>Italienisch</option><option value="en" ${x.preferred_language==="en"?"selected":""}>Englisch</option></select></label>
+      <label>Bevorzugter Kontakt<select id="cuDelay"><option value="email">E-Mail</option><option value="sms" ${x.preferred_delay_channel==="sms"?"selected":""}>SMS</option><option value="whatsapp" ${x.preferred_delay_channel==="whatsapp"?"selected":""}>WhatsApp</option></select></label>
     </div>
-    <label style="display:block;margin-top:12px">Lieferhinweise<textarea id="cuDelivery" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:8px">\${esc(x.delivery_instructions||"")}</textarea></label>
-    <label style="display:block;margin-top:12px">Interne Notizen<textarea id="cuNotes" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:8px">\${esc(x.notes||"")}</textarea></label>
-    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveCustomer('\${id||""}')">Speichern</button></div>\`);
+    <label style="display:block;margin-top:12px">Lieferhinweise<textarea id="cuDelivery" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:8px">${esc(x.delivery_instructions||"")}</textarea></label>
+    <label style="display:block;margin-top:12px">Interne Notizen<textarea id="cuNotes" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #d0d5dd;border-radius:8px">${esc(x.notes||"")}</textarea></label>
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveCustomer('${id||""}')">Speichern</button></div>`);
 }
 async function saveCustomer(id){
   const body={customer_number:document.getElementById("cuNumber").value.trim(),company:document.getElementById("cuCompany").value.trim(),vat_id:document.getElementById("cuVat").value.trim(),contact_name:document.getElementById("cuContact").value.trim(),email:document.getElementById("cuEmail").value.trim(),phone:document.getElementById("cuPhone").value.trim(),mobile:document.getElementById("cuMobile").value.trim(),website:document.getElementById("cuWebsite").value.trim(),address:document.getElementById("cuAddress").value.trim(),postal_code:document.getElementById("cuPostal").value.trim(),city:document.getElementById("cuCity").value.trim(),billing_address:document.getElementById("cuBillAddress").value.trim(),billing_postal_code:document.getElementById("cuBillPostal").value.trim(),billing_city:document.getElementById("cuBillCity").value.trim(),payment_terms_days:document.getElementById("cuTerms").value===""?null:Number(document.getElementById("cuTerms").value),preferred_language:document.getElementById("cuLanguage").value||null,preferred_delay_channel:document.getElementById("cuDelay").value||"email",delivery_instructions:document.getElementById("cuDelivery").value.trim(),notes:document.getElementById("cuNotes").value.trim()};
@@ -631,9 +631,9 @@ async function saveTripEdit(id){
  try{await api("/api/trips/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({weight_kg:weight,price_net:price,pieces:Number(document.getElementById("etPieces").value||1),route:document.getElementById("etRoute").value})});closeModal();await refreshState();view("dispatch")}catch(e){alert(e.message)}
 }
 async function openCustomerFile(id){view("customers");setTimeout(()=>loadCustomer360(id),0)}
-function loadCustomer360(id){
+async function loadCustomer360(id){
  const box=document.getElementById("customerFileBox")||document.getElementById("customer360Box");if(!box)return;
- try{const d=await api("/api/customers/"+id+"/360");box.innerHTML=\`<div class="page-head"><div><div class="eyebrow">KUNDENAKTE</div><h2>\${esc(d.customer.company||"")}</h2><p class="muted">\${esc(d.customer.contact_name||"Kein Ansprechpartner")} · \${esc(d.customer.city||"")}</p></div><button class="btn primary" onclick="openCustomer('\${id}')">Kunde bearbeiten</button></div><div class="grid">
+ try{const d=await api("/api/customers/"+id+"/360");box.innerHTML=`<div class="page-head"><div><div class="eyebrow">KUNDENAKTE</div><h2>${esc(d.customer.company||"")}</h2><p class="muted">${esc(d.customer.contact_name||"Kein Ansprechpartner")} · ${esc(d.customer.city||"")}</p></div><button class="btn primary" onclick="openCustomer('${id}')">Kunde bearbeiten</button></div><div class="grid">
  <div class="stat"><span>Rechnungsvolumen</span><b>€ ${Number(d.totals.total_billed||0).toFixed(2)}</b></div>
  <div class="stat"><span>Offen</span><b>€ ${Number(d.totals.outstanding||0).toFixed(2)}</b></div>
  <div class="stat"><span>Aufträge</span><b>${d.orders.length}</b></div><div class="stat"><span>DDT</span><b>${d.ddts.length}</b></div></div>
