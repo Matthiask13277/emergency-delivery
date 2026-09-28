@@ -65,6 +65,10 @@ async function desktopCloudProxy(req,res,next){
     return res.send(data);
   }catch(e){
     console.warn("Desktop cloud proxy unavailable; using local backend.",String(e));
+    // Tell the desktop client that a mutating request is being handled locally.
+    // Read-only requests may continue against the local cache; mutations must be
+    // queued so they can be replayed to the cloud after reconnect.
+    res.setHeader("X-Desktop-Local-Fallback","1");
     const offlineAuth=req.headers["x-offline-authorization"];
     if(offlineAuth) req.headers.authorization=offlineAuth;
     return next();
