@@ -2,6 +2,18 @@ const {app,BrowserWindow,dialog}=require("electron");
 const path=require("path");
 const net=require("net");
 let backendLoaded=false;
+let isQuitting=false;
+
+// Prevent multiple portable instances from locking the local PGlite database.
+const singleInstanceLock=app.requestSingleInstanceLock();
+if(!singleInstanceLock){
+  app.quit();
+}else{
+  app.on("second-instance",()=>{
+    const win=BrowserWindow.getAllWindows()[0];
+    if(win){if(win.isMinimized())win.restore();win.focus();}
+  });
+}
 
 function findFreePort(start=3000){
   return new Promise((resolve,reject)=>{
@@ -131,5 +143,16 @@ async function createWindow(){
     });
   }
 }
-app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
-app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
+app.on("before-quit",event=>{
+  if(isQuitting)return;
+  isQuitting=true;
+  event.preventDefault();
+  Promise.resolve().then(async()=>{
+    try{const {pool}=require("./local-db.js");await pool.end();}catch(e){console.warn("Local database close failed:",String(e))}
+    app.exit(0);
+  });
+});
+if(singleInstanceLock){
+  app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
+  app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
+}
