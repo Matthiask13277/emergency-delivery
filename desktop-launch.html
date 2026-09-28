@@ -158,7 +158,12 @@ async function api(u,o={}){
     if(offlineMode() && OT) throw new Error("OFFLINE_SESSION");
     T="";localStorage.removeItem("edv10");loginView();throw 0
   }
-  return r.json()
+  const data=await r.json();
+  if(data && data.offlineToken){
+    OT=data.offlineToken;
+    localStorage.edv10_offline=OT;
+  }
+  return data
 }
 function loginView(){
   const cached=localStorage.getItem("ed_state_v1");
