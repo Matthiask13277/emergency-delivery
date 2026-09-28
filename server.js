@@ -23,11 +23,11 @@ function smtpTransport(){
 }
 app.use(express.json({limit:"12mb"}));
 
-const DESKTOP_CLOUD_URL=String(process.env.EMERGENCY_CLOUD_URL||"").replace(/\\/+$/,"");
-const DESKTOP_CLOUD_TIMEOUT=Number(process.env.EMERGENCY_CLOUD_TIMEOUT_MS||8000);
+const DESKTOP_CLOUD_URL="https://emergency-delivery.emergency-delivery1.blitz.cloud";
+const DESKTOP_CLOUD_TIMEOUT=8000;
 
 async function desktopCloudProxy(req,res,next){
-  if(!DESKTOP_CLOUD_URL || !req.path.startsWith("/api/")) return next();
+  if(!global.__EMERGENCY_DESKTOP_MODE__ || !req.path.startsWith("/api/")) return next();
   const target=DESKTOP_CLOUD_URL+req.originalUrl;
   const headers={};
   for(const [k,v] of Object.entries(req.headers||{})){
