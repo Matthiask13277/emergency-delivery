@@ -41,6 +41,14 @@ async function desktopCloudProxy(req,res,next){
   init.signal=controller.signal;
   try{
     const upstream=await fetch(target,init);
+    // The desktop app must still allow local/offline login when the cloud rejects
+    // the credentials. Otherwise a deleted cloud account blocks the local recovery
+    // account seeded by bootstrap-db.js. A successful cloud login continues to win.
+    if(req.path==="/api/login" && (upstream.status===401 || upstream.status===403)){
+      console.warn("Desktop cloud login rejected; trying local backend.");
+      res.setHeader("X-Desktop-Local-Fallback","1");
+      return next();
+    }
     let data=Buffer.from(await upstream.arrayBuffer());
     const contentType=String(upstream.headers.get("content-type")||"");
     if((req.path==="/api/login" || req.path==="/api/state") && upstream.ok && contentType.includes("application/json") && global.__EMERGENCY_DESKTOP_MODE__){
