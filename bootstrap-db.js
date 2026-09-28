@@ -238,6 +238,7 @@ ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS delivered_pieces integer;
 ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS eta_at timestamptz;
 ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS arrival_radius_m integer;
 
+ALTER TABLE email_outbox ADD COLUMN IF NOT EXISTS customer_id uuid REFERENCES customers(id) ON DELETE SET NULL;
 ALTER TABLE email_outbox ADD COLUMN IF NOT EXISTS queued_at timestamptz;
 ALTER TABLE email_outbox ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz;
 
