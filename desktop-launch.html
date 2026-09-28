@@ -158,6 +158,11 @@ async function api(u,o={}){
     if(offlineMode() && OT) throw new Error("OFFLINE_SESSION");
     T="";localStorage.removeItem("edv10");loginView();throw 0
   }
+  // The local desktop backend may answer while the cloud is unreachable.
+  // Never treat a successful local mutation as cloud-synchronized.
+  if(r.headers.get("X-Desktop-Local-Fallback")==="1" && !["GET","HEAD"].includes(String(o.method||"GET").toUpperCase())){
+    throw new Error("OFFLINE_MUTATION");
+  }
   const data=await r.json();
   if(data && data.offlineToken){
     OT=data.offlineToken;
@@ -335,23 +340,12 @@ async function trip(){const weight=Number(document.getElementById("w").value||0)
 async function opt(){let ids=[...tripsel.selectedOptions].map(x=>x.value);let r=await api("/api/routes/optimize",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tripIds:ids,origin:org.value,destination:dst.value})});optout.innerHTML="<p>"+r.ordered.map(x=>x.position+". "+x.tripNumber+" · "+(x.city||"")).join("<br>")+"</p><button class='btn' onclick=\"window.open('"+r.mapsUrl+"','_blank')\">Google Maps öffnen</button>"}
 async function st(id,s){
   const action={type:"status",tripId:id,status:s};
-  if(!navigator.onLine){
-    edEnqueue(action);
-    const t=S?.trips?.find(x=>x.id===id);
-    if(t)t.status=s;
-    localStorage.setItem("ed_state_v1",JSON.stringify(S));
-    view("driver");
-    alert("Status lokal gespeichert – wird synchronisiert, sobald wieder Internet verfügbar ist.");
-    return;
-  }
   try{
-    const r=await fetch("/api/trips/"+id,{
+    await api("/api/trips/"+id,{
       method:"PATCH",
-      headers:{"Content-Type":"application/json","Authorization":"Bearer "+T},
+      headers:{"Content-Type":"application/json"},
       body:JSON.stringify({status:s})
     });
-    const out=await r.json().catch(()=>({}));
-    if(!r.ok) throw new Error(out.error||("Serverfehler "+r.status));
     if(S?.trips){
       const t=S.trips.find(x=>x.id===id);
       if(t)t.status=s;
@@ -360,13 +354,14 @@ async function st(id,s){
     view("driver");
     if(window.navigator.onLine) await edSync();
   }catch(e){
-    if(e instanceof TypeError || !navigator.onLine){
+    // Cloud unavailable: keep the change locally and queue it for reconnect.
+    if(e?.message==="OFFLINE_MUTATION" || e instanceof TypeError || !navigator.onLine){
       edEnqueue(action);
       const t=S?.trips?.find(x=>x.id===id);
       if(t)t.status=s;
       localStorage.setItem("ed_state_v1",JSON.stringify(S));
       view("driver");
-      alert("Internet nicht verfügbar. Status lokal gespeichert.");
+      alert("Status lokal gespeichert – wird synchronisiert, sobald wieder Internet verfügbar ist.");
     }else{
       alert("Status konnte nicht gespeichert werden: "+e.message);
     }
