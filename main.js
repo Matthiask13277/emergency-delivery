@@ -22,8 +22,7 @@ async function prepare(){
   process.env.JWT_SECRET=process.env.JWT_SECRET||"emergency-delivery-local-v164";
   process.env.EMERGENCY_DB_DIR=path.join(app.getPath("userData"),"database");
   process.env.EMERGENCY_CONFIG_DIR=path.join(app.getPath("userData"),"config");
-  process.env.EMERGENCY_CLOUD_URL=process.env.EMERGENCY_CLOUD_URL||"https://emergency-delivery.emergency-delivery1.blitz.cloud";
-  process.env.EMERGENCY_CLOUD_TIMEOUT_MS=process.env.EMERGENCY_CLOUD_TIMEOUT_MS||"8000";
+  global.__EMERGENCY_DESKTOP_MODE__=true;
   const fs=require("fs");
   const smtpDir=process.env.EMERGENCY_CONFIG_DIR;
   const smtpFile=path.join(smtpDir,"smtp.json");
