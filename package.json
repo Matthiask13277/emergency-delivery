@@ -1,6 +1,6 @@
 {
   "name": "emergency-delivery-desktop",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -14,26 +14,13 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.emergencydelivery.current.v215",
-    "productName": "Emergency Delivery CURRENT Desktop 2.1.5",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "**/*",
-      "!dist{,/**}",
-      "!node_modules/.cache{,/**}"
-    ],
+    "appId": "com.emergencydelivery.current.v216",
+    "productName": "Emergency Delivery CURRENT Desktop 2.1.6",
+    "directories": { "output": "dist" },
+    "files": ["**/*", "!dist{,/**}", "!node_modules/.cache{,/**}"],
     "win": {
-      "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "artifactName": "ED-CURRENT-DESKTOP-2.1.5.${ext}"
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "artifactName": "ED-CURRENT-DESKTOP-2.1.6.${ext}"
     },
     "asar": true
   },
