@@ -50,12 +50,28 @@ async function prepare(){
   }
   if(!backendLoaded){require("./server.js");backendLoaded=true}
 }
+function ensureDesktopShortcuts(){
+  if(!app.isPackaged || process.platform!=="win32") return;
+  try{
+    const {shell}=require("electron");
+    const path=require("path");
+    const targets=[
+      path.join(app.getPath("desktop"),"Emergency Delivery.lnk"),
+      path.join(app.getPath("appData"),"Microsoft","Windows","Start Menu","Programs","Emergency Delivery.lnk")
+    ];
+    for(const shortcut of targets){
+      require("fs").mkdirSync(path.dirname(shortcut),{recursive:true});
+      shell.writeShortcutLink(shortcut,{target:process.execPath,cwd:path.dirname(process.execPath),description:"Emergency Delivery",icon:process.execPath,iconIndex:0});
+    }
+  }catch(e){console.warn("Desktop shortcut creation failed:",String(e))}
+}
+
 async function createWindow(){
   try{await prepare();}
   catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.1.10 – Startfehler",
+      title:"Emergency Delivery Desktop 2.2.0 – Startfehler",
       message:e.message,
       detail:"Die lokale Datenbank konnte nicht initialisiert werden."
     });
@@ -64,7 +80,7 @@ async function createWindow(){
   }
 
   const win=new BrowserWindow({
-    title:"Emergency Delivery CURRENT 2.1.10",
+    title:"Emergency Delivery CURRENT 2.2.0",
     width:1440,
     height:900,
     minWidth:1100,
@@ -74,7 +90,7 @@ async function createWindow(){
     webPreferences:{
       contextIsolation:true,
       nodeIntegration:false,
-      partition:"desktop-current-v210"
+      partition:"desktop-current-v220"
     }
   });
 
@@ -90,7 +106,7 @@ async function createWindow(){
   }catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.1.10 – Ladefehler",
+      title:"Emergency Delivery Desktop 2.2.0 – Ladefehler",
       message:"Die Desktop-Oberfläche konnte nicht geladen werden.",
       detail:String(e.stack||e)
     });
