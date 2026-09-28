@@ -53,19 +53,38 @@ async function prepare(){
 function ensureDesktopShortcuts(){
   if(!app.isPackaged || process.platform!=="win32") return;
   try{
+    const fs=require("fs");
     const {shell}=require("electron");
-    const path=require("path");
+    const appData=app.getPath("appData");
+    const stableDir=path.join(app.getPath("userData"),"app");
+    const stableExe=path.join(stableDir,"Emergency Delivery Desktop.exe");
+    const currentExe=process.execPath;
+
+    fs.mkdirSync(stableDir,{recursive:true});
+
+    // Keep a stable copy in the user's profile. This prevents the Desktop/Start
+    // Menu shortcut from breaking when the downloaded portable EXE is moved
+    // or deleted from Downloads.
+    if(path.resolve(currentExe).toLowerCase()!==path.resolve(stableExe).toLowerCase()){
+      fs.copyFileSync(currentExe,stableExe);
+    }
+
     const targets=[
       path.join(app.getPath("desktop"),"Emergency Delivery.lnk"),
-      path.join(app.getPath("appData"),"Microsoft","Windows","Start Menu","Programs","Emergency Delivery.lnk")
+      path.join(appData,"Microsoft","Windows","Start Menu","Programs","Emergency Delivery.lnk")
     ];
     for(const shortcut of targets){
-      require("fs").mkdirSync(path.dirname(shortcut),{recursive:true});
-      shell.writeShortcutLink(shortcut,{target:process.execPath,cwd:path.dirname(process.execPath),description:"Emergency Delivery",icon:process.execPath,iconIndex:0});
+      fs.mkdirSync(path.dirname(shortcut),{recursive:true});
+      shell.writeShortcutLink(shortcut,{
+        target:stableExe,
+        cwd:stableDir,
+        description:"Emergency Delivery",
+        icon:stableExe,
+        iconIndex:0
+      });
     }
   }catch(e){console.warn("Desktop shortcut creation failed:",String(e))}
 }
-
 async function createWindow(){
   try{await prepare();}
   catch(e){
