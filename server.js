@@ -41,11 +41,27 @@ async function desktopCloudProxy(req,res,next){
   init.signal=controller.signal;
   try{
     const upstream=await fetch(target,init);
-    const data=Buffer.from(await upstream.arrayBuffer());
+    let data=Buffer.from(await upstream.arrayBuffer());
+    const contentType=String(upstream.headers.get("content-type")||"");
+    if(req.path==="/api/login" && upstream.ok && contentType.includes("application/json") && global.__EMERGENCY_DESKTOP_MODE__){
+      try{
+        const payload=JSON.parse(data.toString("utf8"));
+        if(payload.user && payload.user.id){
+          payload.offlineToken=jwt.sign(
+            {id:payload.user.id,name:payload.user.name,role:payload.user.role,offline:true},
+            JWT_SECRET,
+            {expiresIn:"30d"}
+          );
+          data=Buffer.from(JSON.stringify(payload),"utf8");
+        }
+      }catch(_e){}
+    }
     res.status(upstream.status);
     upstream.headers.forEach((v,k)=>{
-      if(!["content-encoding","transfer-encoding","connection"].includes(k)) res.setHeader(k,v);
+      if(["content-encoding","transfer-encoding","connection","content-length"].includes(k)) return;
+      res.setHeader(k,v);
     });
+    if(contentType) res.setHeader("content-type",contentType);
     return res.send(data);
   }catch(e){
     console.warn("Desktop cloud proxy unavailable; using local backend.",String(e));
