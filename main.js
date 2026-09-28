@@ -22,9 +22,6 @@ async function prepare(){
   process.env.JWT_SECRET=process.env.JWT_SECRET||"emergency-delivery-local-v164";
   process.env.EMERGENCY_DB_DIR=path.join(app.getPath("userData"),"database");
   process.env.EMERGENCY_CONFIG_DIR=path.join(app.getPath("userData"),"config");
-  // V202: preconfigure Gmail address on first launch.
-  // Gmail SMTP requires a Google App Password (not the normal Google account password).
-  // Existing user settings are preserved and can be changed in E-Mail -> Gmail SMTP.
   const fs=require("fs");
   const smtpDir=process.env.EMERGENCY_CONFIG_DIR;
   const smtpFile=path.join(smtpDir,"smtp.json");
@@ -43,9 +40,6 @@ async function prepare(){
   try{
     await bootstrap();
   }catch(firstError){
-    // PGlite can leave its local WAL/database in an unrecoverable state after
-    // an interrupted Windows shutdown. Preserve the old folder and retry once
-    // with a fresh local database instead of aborting the whole application.
     const {recoverLocalDb}=require("./local-db.js");
     const recovery=await recoverLocalDb();
     try{ delete require.cache[require.resolve("./bootstrap-db.js")]; }catch(_e){}
@@ -57,10 +51,49 @@ async function prepare(){
 }
 async function createWindow(){
   try{await prepare();}
-  catch(e){await dialog.showMessageBox({type:"error",title:"Emergency Delivery Desktop 2.1.5 – Startfehler",message:e.message,detail:"Die lokale Datenbank konnte nicht initialisiert werden."});app.quit();return}
-  const win=new BrowserWindow({title:"Emergency Delivery CURRENT 2.1.5",width:1440,height:900,minWidth:1100,minHeight:700,autoHideMenuBar:true,backgroundColor:"#ffffff",webPreferences:{contextIsolation:true,nodeIntegration:false}});
-  win.webContents.on("did-fail-load",(_e,code,desc,url)=>console.error("Load failed:",code,desc,url));
-  await win.loadURL(`http://127.0.0.1:${process.env.PORT}/desktop-launch.html`);
+  catch(e){
+    await dialog.showMessageBox({
+      type:"error",
+      title:"Emergency Delivery Desktop 2.1.6 – Startfehler",
+      message:e.message,
+      detail:"Die lokale Datenbank konnte nicht initialisiert werden."
+    });
+    app.quit();
+    return;
+  }
+
+  const win=new BrowserWindow({
+    title:"Emergency Delivery CURRENT 2.1.6",
+    width:1440,
+    height:900,
+    minWidth:1100,
+    minHeight:700,
+    autoHideMenuBar:true,
+    backgroundColor:"#ffffff",
+    webPreferences:{
+      contextIsolation:true,
+      nodeIntegration:false,
+      partition:"desktop-current-v216"
+    }
+  });
+
+  win.webContents.on("did-fail-load",(_e,code,desc,url)=>{
+    console.error("Load failed:",code,desc,url);
+  });
+
+  try{
+    await win.loadURL(
+      `http://127.0.0.1:${process.env.PORT}/desktop-launch.html`,
+      {extraHeaders:"pragma: no-cache\nCache-Control: no-cache\n"}
+    );
+  }catch(e){
+    await dialog.showMessageBox({
+      type:"error",
+      title:"Emergency Delivery Desktop 2.1.6 – Ladefehler",
+      message:"Die Desktop-Oberfläche konnte nicht geladen werden.",
+      detail:String(e.stack||e)
+    });
+  }
 }
 app.whenReady().then(createWindow);
 app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
