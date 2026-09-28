@@ -44,10 +44,14 @@ async function desktopCloudProxy(req,res,next){
     // The desktop app must still allow local/offline login when the cloud rejects
     // the credentials. Otherwise a deleted cloud account blocks the local recovery
     // account seeded by bootstrap-db.js. A successful cloud login continues to win.
-    if(req.path==="/api/login" && (upstream.status===401 || upstream.status===403)){
-      console.warn("Desktop cloud login rejected; trying local backend.");
-      res.setHeader("X-Desktop-Local-Fallback","1");
-      return next();
+    if(upstream.status===401 || upstream.status===403){
+      const offlineAuth=req.headers["x-offline-authorization"];
+      if(req.path==="/api/login" || offlineAuth){
+        if(offlineAuth) req.headers.authorization=offlineAuth;
+        console.warn("Desktop cloud request rejected; trying local backend.");
+        res.setHeader("X-Desktop-Local-Fallback","1");
+        return next();
+      }
     }
     let data=Buffer.from(await upstream.arrayBuffer());
     const contentType=String(upstream.headers.get("content-type")||"");
@@ -221,8 +225,8 @@ app.post("/api/me/password",auth,async(req,res)=>{
 
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();const [users,customers,trips,vehicles,invoices,stops,gps,company]=await Promise.all([
 q("select id,name,role from users order by name"),q("select * from customers order by company"),q("select * from trips order by created_at desc"),q("select * from vehicles order by name"),
-q("select * from invoices order by issue_date desc"),q("select * from trip_stops order by trip_id,stop_order"),Promise.resolve([]),q("select * from company_settings where id=1")]);
-res.json({user:req.user,users,customers,trips,vehicles,invoices,stops,gps,company:company[0]||{}})});
+q("select * from invoices order by issue_date desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),Promise.resolve([]),q("select * from company_settings where id=1")]);
+res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
 
 app.get("/api/company-settings",auth,async(req,res)=>{
   try{await ensureCompanySettings();const r=await q("select * from company_settings where id=1");res.json(r[0]||{});}catch(e){res.status(500).json({error:e.message})}
