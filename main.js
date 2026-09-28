@@ -148,7 +148,7 @@ app.on("before-quit",event=>{
   isQuitting=true;
   event.preventDefault();
   Promise.resolve().then(async()=>{
-    try{const {pool}=require("./local-db.js");await pool.end();}catch(e){console.warn("Local database close failed:",String(e))}
+    if(backendLoaded){try{const {pool}=require("./local-db.js");await pool.end();}catch(e){console.warn("Local database close failed:",String(e))}}
     app.exit(0);
   });
 });
