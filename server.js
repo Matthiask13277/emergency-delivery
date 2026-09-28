@@ -181,10 +181,10 @@ app.patch("/api/employees/:id", auth, roles("Admin"), async (req,res)=>{
     let r;
     if(password){
       const hash=await bcrypt.hash(password,12);
-      r=await q(\`UPDATE users SET username=$1,name=$2,role=$3,phone=$4,email=$5,address=$6,postal_code=$7,city=$8,license_class=$9,entry_date=$10,active=$11,assigned_vehicle_id=$12,permissions=$13,password_hash=$14,must_change_password=false WHERE id=$15 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions\`,
+      r=await q(`UPDATE users SET username=$1,name=$2,role=$3,phone=$4,email=$5,address=$6,postal_code=$7,city=$8,license_class=$9,entry_date=$10,active=$11,assigned_vehicle_id=$12,permissions=$13,password_hash=$14,must_change_password=false WHERE id=$15 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions`,
         [...base,hash,req.params.id]);
     }else{
-      r=await q(\`UPDATE users SET username=$1,name=$2,role=$3,phone=$4,email=$5,address=$6,postal_code=$7,city=$8,license_class=$9,entry_date=$10,active=$11,assigned_vehicle_id=$12,permissions=$13 WHERE id=$14 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions\`,
+      r=await q(`UPDATE users SET username=$1,name=$2,role=$3,phone=$4,email=$5,address=$6,postal_code=$7,city=$8,license_class=$9,entry_date=$10,active=$11,assigned_vehicle_id=$12,permissions=$13 WHERE id=$14 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions`,
         [...base,req.params.id]);
     }
     if(!r.length)return res.status(404).json({error:"Mitarbeiter nicht gefunden"});
@@ -237,11 +237,11 @@ app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=
   try{
     const ids=Array.isArray(req.body.tripIds)?req.body.tripIds:[];
     if(!ids.length)return res.status(400).json({error:"Keine Aufträge ausgewählt"});
-    const ts=await q(\`select t.*,c.company,c.address customer_address,c.city customer_city,
+    const ts=await q(`select t.*,c.company,c.address customer_address,c.city customer_city,
       coalesce(s.city,c.city) stop_city,coalesce(s.address,c.address) stop_address
       from trips t left join customers c on c.id=t.customer_id
       left join lateral (select city,address from trip_stops where trip_id=t.id order by coalesce(dispatch_position,stop_order),stop_order,id limit 1) s on true
-      where t.id=any($1::uuid[])\`,[ids]);
+      where t.id=any($1::uuid[])`,[ids]);
     const order=ts.sort((a,b)=>String(a.stop_city||"").localeCompare(String(b.stop_city||""),"de",{numeric:true,sensitivity:"base"}));
     const origin=String(req.body.origin||"").trim()||String(order[0]?.stop_address||order[0]?.stop_city||"Milano");
     const destination=String(req.body.destination||"").trim()||String(order[order.length-1]?.stop_address||order[order.length-1]?.stop_city||origin);
@@ -3004,10 +3004,10 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
   try{
     const b=req.body||{};
     if(!b.company)return res.status(400).json({error:"Firma erforderlich"});
-    const r=await q(\`insert into customers(
+    const r=await q(`insert into customers(
       company,vat_id,address,postal_code,city,country,email,phone,lat,lng,customer_number,contact_name,mobile,website,
       billing_address,billing_postal_code,billing_city,payment_terms_days,preferred_language,notes,delivery_instructions
-    ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *\`,
+    ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) returning *`,
       [b.company,b.vat_id||null,b.address||null,b.postal_code||null,b.city||null,b.country||null,b.email||null,b.phone||null,b.lat||null,b.lng||null,
        b.customer_number||null,b.contact_name||null,b.mobile||null,b.website||null,b.billing_address||null,b.billing_postal_code||null,
        b.billing_city||null,(b.payment_terms_days===""||b.payment_terms_days==null)?null:Number(b.payment_terms_days),
@@ -3019,7 +3019,7 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
 app.patch("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     const b=req.body||{}, id=req.params.id;
-    const r=await q(\`update customers set
+    const r=await q(`update customers set
       company=coalesce($1,company),vat_id=coalesce($2,vat_id),address=coalesce($3,address),postal_code=coalesce($4,postal_code),
       city=coalesce($5,city),country=coalesce($6,country),email=coalesce($7,email),phone=coalesce($8,phone),
       lat=coalesce($9,lat),lng=coalesce($10,lng),customer_number=coalesce($11,customer_number),
@@ -3027,7 +3027,7 @@ app.patch("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accountin
       billing_address=coalesce($15,billing_address),billing_postal_code=coalesce($16,billing_postal_code),
       billing_city=coalesce($17,billing_city),payment_terms_days=coalesce($18,payment_terms_days),
       preferred_language=coalesce($19,preferred_language),notes=coalesce($20,notes),delivery_instructions=coalesce($21,delivery_instructions)
-      where id=$22 returning *\`,
+      where id=$22 returning *`,
       [b.company,b.vat_id,b.address,b.postal_code,b.city,b.country,b.email,b.phone,b.lat,b.lng,b.customer_number,b.contact_name,b.mobile,b.website,
        b.billing_address,b.billing_postal_code,b.billing_city,b.payment_terms_days===""?null:(b.payment_terms_days==null?null:Number(b.payment_terms_days)),
        b.preferred_language,b.notes,b.delivery_instructions,id]);
@@ -3742,10 +3742,10 @@ async function v87BuildDdtPdf(t,stops,ddt){
   });
   const transportTop=Math.min(y+10,transportY-46);
   doc.font("Helvetica-Bold").fontSize(10).text("Transportdaten",48,transportTop);
-  doc.font("Helvetica").fontSize(9).text(\`Fahrer: \${t.driver_name||"—"}\`,48,transportTop+18);
-  doc.text(\`Fahrzeug: \${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}\`,280,transportTop+18);
+  doc.font("Helvetica").fontSize(9).text(`Fahrer: ${t.driver_name||"—"}`,48,transportTop+18);
+  doc.text(`Fahrzeug: ${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}`,280,transportTop+18);
   doc.fontSize(8).fillColor("#667085").text("Der Lieferschein enthält keine Uhrzeiten.",48,transportTop+40);
-  const footer=[company.company_name,company.legal_name,[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.vat_id?\`P.IVA: \${company.vat_id}\`:"",company.phone?\`Tel. \${company.phone}\`:"",company.email||"",company.footer_note||""];
+  const footer=[company.company_name,company.legal_name,[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.vat_id?`P.IVA: ${company.vat_id}`:"",company.phone?`Tel. ${company.phone}`:"",company.email||"",company.footer_note||""];
   doc.fillColor("#172033").fontSize(7).text(footer.filter(Boolean).join(" · "),48,footerY,{width:499,align:"center"});
   doc.end(); await done; return Buffer.concat(chunks)
 }
