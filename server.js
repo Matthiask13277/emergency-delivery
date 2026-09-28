@@ -78,10 +78,22 @@ async function desktopCloudProxy(req,res,next){
 }
 
 app.get("/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(__dirname,"emergency-delivery-logo.png")));
+app.get("/assets/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(__dirname,"emergency-delivery-logo.png")));
 app.use(desktopCloudProxy);
 
 async function ensureV183Columns(){
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_name text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS mobile text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS website text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_address text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_postal_code text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_city text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS payment_terms_days integer`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_language text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS notes text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS delivery_instructions text`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email text`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS address text`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS postal_code text`);
@@ -156,19 +168,26 @@ app.post("/api/employees", auth, roles("Admin"), async (req,res)=>{
 });
 app.patch("/api/employees/:id", auth, roles("Admin"), async (req,res)=>{
   try{
-    const {name,role,password,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions}=req.body||{};
+    const {username,name,role,password,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions}=req.body||{};
     if(!name||!role)return res.status(400).json({error:"Name und Rolle sind erforderlich"});
     if(!["Admin","Dispatcher","Driver","Accounting"].includes(role))return res.status(400).json({error:"Ungültige Rolle"});
+    const cleanUsername=String(username||"").trim();
+    if(!cleanUsername)return res.status(400).json({error:"Benutzername ist erforderlich"});
+    const existing=await q("select id from users where username=$1 and id<>$2",[cleanUsername,req.params.id]);
+    if(existing.length)return res.status(409).json({error:"Benutzername bereits vorhanden"});
+    const base=[cleanUsername,name.trim(),role,phone||null,email||null,address||null,postal_code||null,city||null,license_class||null,entry_date||null,active!==false,assigned_vehicle_id||null,permissions&&typeof permissions==="object"?permissions:{}];
     let r;
-    const vals=[name.trim(),role,phone||null,email||null,address||null,postal_code||null,city||null,license_class||null,entry_date||null,active!==false,assigned_vehicle_id||null,req.params.id];
     if(password){
       const hash=await bcrypt.hash(password,12);
-      r=await q(`UPDATE users SET name=$1,role=$2,phone=$3,email=$4,address=$5,postal_code=$6,city=$7,license_class=$8,entry_date=$9,active=$10,assigned_vehicle_id=$11,permissions=$12,password_hash=$13 WHERE id=$14 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions`,
-        [name.trim(),role,phone||null,email||null,address||null,postal_code||null,city||null,license_class||null,entry_date||null,active!==false,assigned_vehicle_id||null,permissions&&typeof permissions==="object"?permissions:{},hash,req.params.id]);
-    }else r=await q(`UPDATE users SET name=$1,role=$2,phone=$3,email=$4,address=$5,postal_code=$6,city=$7,license_class=$8,entry_date=$9,active=$10,assigned_vehicle_id=$11,permissions=$12 WHERE id=$13 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions`,[name.trim(),role,phone||null,email||null,address||null,postal_code||null,city||null,license_class||null,entry_date||null,active!==false,assigned_vehicle_id||null,permissions&&typeof permissions==="object"?permissions:{},req.params.id]);
+      r=await q(\`UPDATE users SET username=$1,name=$2,role=$3,phone=$4,email=$5,address=$6,postal_code=$7,city=$8,license_class=$9,entry_date=$10,active=$11,assigned_vehicle_id=$12,permissions=$13,password_hash=$14,must_change_password=false WHERE id=$15 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions\`,
+        [...base,hash,req.params.id]);
+    }else{
+      r=await q(\`UPDATE users SET username=$1,name=$2,role=$3,phone=$4,email=$5,address=$6,postal_code=$7,city=$8,license_class=$9,entry_date=$10,active=$11,assigned_vehicle_id=$12,permissions=$13 WHERE id=$14 RETURNING id,username,name,role,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions\`,
+        [...base,req.params.id]);
+    }
     if(!r.length)return res.status(404).json({error:"Mitarbeiter nicht gefunden"});
-    await audit(req,"EMPLOYEE_UPDATED",`${r[0].name} (${r[0].role})`);res.json(r[0]);
-  }catch(e){res.status(500).json({error:e.message})}
+    await audit(req,"EMPLOYEE_UPDATED",r[0].username+" – "+r[0].name+" ("+r[0].role+")");res.json(r[0]);
+  }catch(e){if(e.code==="23505")return res.status(409).json({error:"Benutzername bereits vorhanden"});res.status(500).json({error:e.message})}
 });
 app.delete("/api/employees/:id", auth, roles("Admin"), async (req,res)=>{
   try{if(req.params.id===req.user.id)return res.status(400).json({error:"Der eigene Benutzer kann nicht gelöscht werden"});
@@ -212,7 +231,24 @@ app.patch("/api/company-settings",auth,roles("Admin"),async(req,res)=>{
 app.post("/api/customers",auth,roles("Admin","Dispatcher"),async(req,res)=>{const r=await q("insert into customers(company,vat_id,address,city,email,phone) values($1,$2,$3,$4,$5,$6) returning *",[req.body.company,req.body.vatId,req.body.address,req.body.city,req.body.email,req.body.phone]);await audit(req,"CUSTOMER_CREATED",r[0].company);res.json(r[0])});
 app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{const w=+req.body.weightKg||0;if(w>1000)return res.status(400).json({error:"Maximum 1,000 KG"});const n=await q("select 'TRIP-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(trip_number,'-',3) as int)),0)+1)::text,4,'0') n from trips");const r=await q("insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net) values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9) returning *",[n[0].n,req.body.customerId,w,+req.body.pieces||1,req.body.driverId||null,req.body.vehicleId||null,req.body.route||"",req.body.notes||"",+req.body.priceNet||0]);await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0])});
 app.post("/api/trips/:id/stops",auth,roles("Admin","Dispatcher"),async(req,res)=>{const c=await q("select coalesce(max(stop_order),0)+1 n from trip_stops where trip_id=$1",[req.params.id]);const r=await q("insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time) values($1,$2,$3,$4,$5) returning *",[req.params.id,c[0].n,req.body.address,req.body.customerName,req.body.plannedTime||null]);res.json(r[0])});
-app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=>{const ids=req.body.tripIds||[];if(!ids.length)return res.status(400).json({error:"No trips"});const ts=await q("select t.*,c.address,c.city,c.company from trips t left join customers c on c.id=t.customer_id where t.id=any($1::uuid[])",[ids]);const order=ts.sort((a,b)=>String(a.city||"").localeCompare(String(b.city||"")));const origin=req.body.origin||"Milano";const destination=req.body.destination||origin;const url=maps(origin,destination,order.map(x=>x.address||x.city).filter(Boolean));await audit(req,"ROUTE_OPTIMIZED",order.map(x=>x.trip_number).join(","));res.json({ordered:order.map((x,i)=>({position:i+1,id:x.id,tripNumber:x.trip_number,customer:x.company,address:x.address,city:x.city})),mapsUrl:url})});
+app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+  try{
+    const ids=Array.isArray(req.body.tripIds)?req.body.tripIds:[];
+    if(!ids.length)return res.status(400).json({error:"Keine Aufträge ausgewählt"});
+    const ts=await q(\`select t.*,c.company,c.address customer_address,c.city customer_city,
+      coalesce(s.city,c.city) stop_city,coalesce(s.address,c.address) stop_address
+      from trips t left join customers c on c.id=t.customer_id
+      left join lateral (select city,address from trip_stops where trip_id=t.id order by coalesce(dispatch_position,stop_order),stop_order,id limit 1) s on true
+      where t.id=any($1::uuid[])\`,[ids]);
+    const order=ts.sort((a,b)=>String(a.stop_city||"").localeCompare(String(b.stop_city||""),"de",{numeric:true,sensitivity:"base"}));
+    const origin=String(req.body.origin||"").trim()||String(order[0]?.stop_address||order[0]?.stop_city||"Milano");
+    const destination=String(req.body.destination||"").trim()||String(order[order.length-1]?.stop_address||order[order.length-1]?.stop_city||origin);
+    const waypoints=order.slice(0,-1).map(x=>x.stop_address||x.stop_city).filter(Boolean);
+    const url=maps(origin,destination,waypoints);
+    await audit(req,"ROUTE_OPTIMIZED",order.map(x=>x.trip_number).join(","));
+    res.json({ordered:order.map((x,i)=>({position:i+1,id:x.id,tripNumber:x.trip_number,customer:x.company,address:x.stop_address||x.customer_address,city:x.stop_city||x.customer_city})),mapsUrl:url});
+  }catch(e){res.status(400).json({error:e.message})}
+});
 app.patch("/api/trips/:id",auth,async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
 async function autoInvoice(req,t){const exists=(await q("select id from invoices where trip_id=$1",[t.id]))[0];if(exists)return;const n=await q("select 'INV-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(invoice_number,'-',3) as int)),0)+1)::text,4,'0') n from invoices");const net=+t.price_net,vat=+(net*.22).toFixed(2);await q("insert into invoices(invoice_number,customer_id,trip_id,net,vat_rate,vat,gross,status,description) values($1,$2,$3,$4,22,$5,$6,'Open',$7)",[n[0].n,t.customer_id, t.id,net,vat,net+vat,"Automatiche Rechnung für "+t.trip_number]);await audit(req,"AUTO_INVOICE_CREATED",t.trip_number)}
 app.post("/api/gps",auth,roles("Driver"),async(req,res)=>{const t=(await q("select id from trips where id=$1 and driver_id=$2",[req.body.tripId,req.user.id]))[0];if(!t)return res.status(404).json({error:"Trip not found"});const r=await q("insert into gps_points(trip_id,driver_id,lat,lng,accuracy) values($1,$2,$3,$4,$5) returning *",[t.id,req.user.id,req.body.lat,req.body.lng,req.body.accuracy||null]);await q("update trips set current_lat=$1,current_lng=$2,updated_at=now() where id=$3",[req.body.lat,req.body.lng,t.id]);res.json(r[0])});
@@ -2966,8 +3002,14 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
   try{
     const b=req.body||{};
     if(!b.company)return res.status(400).json({error:"Firma erforderlich"});
-    const r=await q(`insert into customers(company,vat_id,address,city,email,phone,lat,lng) values($1,$2,$3,$4,$5,$6,$7,$8) returning *`,
-      [b.company,b.vat_id||null,b.address||null,b.city||null,b.email||null,b.phone||null,b.lat||null,b.lng||null]);
+    const r=await q(\`insert into customers(
+      company,vat_id,address,city,email,phone,lat,lng,customer_number,contact_name,mobile,website,
+      billing_address,billing_postal_code,billing_city,payment_terms_days,preferred_language,notes,delivery_instructions
+    ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *\`,
+      [b.company,b.vat_id||null,b.address||null,b.city||null,b.email||null,b.phone||null,b.lat||null,b.lng||null,
+       b.customer_number||null,b.contact_name||null,b.mobile||null,b.website||null,b.billing_address||null,
+       b.billing_postal_code||null,b.billing_city||null,(b.payment_terms_days===""||b.payment_terms_days==null)?null:Number(b.payment_terms_days),
+       b.preferred_language||null,b.notes||null,b.delivery_instructions||null]);
     await audit(req,"CUSTOMER_CREATED",r[0].company);
     res.json(r[0])
   }catch(e){res.status(400).json({error:e.message})}
@@ -2975,9 +3017,18 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
 app.patch("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     const b=req.body||{}, id=req.params.id;
-    const r=await q(`update customers set company=coalesce($1,company),vat_id=coalesce($2,vat_id),address=coalesce($3,address),
-      city=coalesce($4,city),email=coalesce($5,email),phone=coalesce($6,phone),lat=coalesce($7,lat),lng=coalesce($8,lng)
-      where id=$9 returning *`,[b.company,b.vat_id,b.address,b.city,b.email,b.phone,b.lat,b.lng,id]);
+    const r=await q(\`update customers set
+      company=coalesce($1,company),vat_id=coalesce($2,vat_id),address=coalesce($3,address),city=coalesce($4,city),
+      email=coalesce($5,email),phone=coalesce($6,phone),lat=coalesce($7,lat),lng=coalesce($8,lng),
+      customer_number=coalesce($9,customer_number),contact_name=coalesce($10,contact_name),mobile=coalesce($11,mobile),
+      website=coalesce($12,website),billing_address=coalesce($13,billing_address),billing_postal_code=coalesce($14,billing_postal_code),
+      billing_city=coalesce($15,billing_city),payment_terms_days=coalesce($16,payment_terms_days),
+      preferred_language=coalesce($17,preferred_language),notes=coalesce($18,notes),delivery_instructions=coalesce($19,delivery_instructions)
+      where id=$20 returning *\`,
+      [b.company,b.vat_id,b.address,b.city,b.email,b.phone,b.lat,b.lng,b.customer_number,b.contact_name,b.mobile,b.website,
+       b.billing_address,b.billing_postal_code,b.billing_city,
+       b.payment_terms_days===""?null:(b.payment_terms_days==null?null:Number(b.payment_terms_days)),
+       b.preferred_language,b.notes,b.delivery_instructions,id]);
     if(!r.length)return res.status(404).json({error:"Kunde nicht gefunden"});
     await audit(req,"CUSTOMER_UPDATED",r[0].company);
     res.json(r[0])
@@ -3557,7 +3608,7 @@ app.post("/api/trips/:id/complete-document-chain-v86",auth,roles("Admin","Dispat
 function v87Money(n){return Number(n||0).toFixed(2)+" EUR"}
 async function v185PdfLogo(doc,company={}){
   try{
-    const p=require("path").join(__dirname,"public","assets","emergency-delivery-logo.png");
+    const p=require("path").join(__dirname,"emergency-delivery-logo.png");
     const fs=require("fs");
     if(fs.existsSync(p)) doc.image(p,48,24,{fit:[170,88],align:"left",valign:"top"});
     const lines=[company.company_name||"Emergency Delivery",[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.country||"",company.phone?`Tel. ${company.phone}`:"",company.email||"",company.website||""];
@@ -3667,28 +3718,33 @@ async function v87BuildDdtPdf(t,stops,ddt){
   doc.text("KG",414,tableTop+10,{width:45,align:"right"});
   doc.text("Stück",478,tableTop+10,{width:55,align:"right"});
 
-  let y=tableTop+30;
-  doc.font("Helvetica").fontSize(8);
   const rows=stops.length?stops:[{customer_name:t.customer_company||"—",address:"",delivered_kg:t.weight_kg||0,delivered_pieces:t.pieces||0,status:t.status||"—"}];
+  // One-page DDT layout: shrink rows/font instead of creating a second page.
+  const footerY=doc.page.height-52;
+  const transportY=footerY-70;
+  const available=Math.max(90,transportY-(tableTop+30)-34);
+  const rowH=Math.max(12,Math.min(42,Math.floor(available/Math.max(1,rows.length))));
+  const rowFont=rowH<=16?5.5:rowH<=22?6.5:8;
+  let y=tableTop+30;
+  doc.font("Helvetica").fontSize(rowFont);
   rows.forEach((x,i)=>{
-    const h=42;
-    if(y+h>doc.page.height-90){doc.addPage(); y=60;}
-    doc.rect(48,y,499,h).strokeColor("#d0d5dd").stroke();
+    doc.rect(48,y,499,rowH).strokeColor("#d0d5dd").stroke();
     doc.fillColor("#172033");
-    doc.text(String(i+1),54,y+14,{width:20});
-    doc.text(x.customer_name||"—",82,y+9,{width:160,height:28,ellipsis:true});
-    doc.text(x.address||"—",254,y+9,{width:150,height:28,ellipsis:true});
-    doc.text(String(x.delivered_kg??0),414,y+14,{width:45,align:"right"});
-    doc.text(String(x.delivered_pieces??0),478,y+14,{width:55,align:"right"});
-    y+=h;
+    const ty=y+Math.max(3,Math.floor((rowH-rowFont)/2));
+    doc.text(String(i+1),54,ty,{width:20});
+    doc.text(x.customer_name||"—",82,y+3,{width:160,height:Math.max(8,rowH-6),ellipsis:true});
+    doc.text(x.address||"—",254,y+3,{width:150,height:Math.max(8,rowH-6),ellipsis:true});
+    doc.text(String(x.delivered_kg??0),414,ty,{width:45,align:"right"});
+    doc.text(String(x.delivered_pieces??0),478,ty,{width:55,align:"right"});
+    y+=rowH;
   });
-  y+=18;
-  doc.font("Helvetica-Bold").fontSize(10).text("Transportdaten",48,y);
-  doc.font("Helvetica").fontSize(9).text(`Fahrer: ${t.driver_name||"—"}`,48,y+18);
-  doc.text(`Fahrzeug: ${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}`,280,y+18);
-  doc.moveDown(3).fontSize(8).fillColor("#667085").text("Der Lieferschein enthält keine Uhrzeiten.");
-  const footer=[company.company_name,company.legal_name,[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.vat_id?`P.IVA: ${company.vat_id}`:"",company.phone?`Tel. ${company.phone}`:"",company.email||"",company.footer_note||""];
-  doc.moveDown(1).fillColor("#172033").fontSize(7).text(footer.filter(Boolean).join(" · "),48,doc.page.height-52,{width:499,align:"center"});
+  const transportTop=Math.min(y+10,transportY-46);
+  doc.font("Helvetica-Bold").fontSize(10).text("Transportdaten",48,transportTop);
+  doc.font("Helvetica").fontSize(9).text(\`Fahrer: \${t.driver_name||"—"}\`,48,transportTop+18);
+  doc.text(\`Fahrzeug: \${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}\`,280,transportTop+18);
+  doc.fontSize(8).fillColor("#667085").text("Der Lieferschein enthält keine Uhrzeiten.",48,transportTop+40);
+  const footer=[company.company_name,company.legal_name,[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.vat_id?\`P.IVA: \${company.vat_id}\`:"",company.phone?\`Tel. \${company.phone}\`:"",company.email||"",company.footer_note||""];
+  doc.fillColor("#172033").fontSize(7).text(footer.filter(Boolean).join(" · "),48,footerY,{width:499,align:"center"});
   doc.end(); await done; return Buffer.concat(chunks)
 }
 
