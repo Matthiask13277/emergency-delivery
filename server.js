@@ -86,6 +86,8 @@ async function ensureV183Columns(){
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_name text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS mobile text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS postal_code text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS country text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS website text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_address text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS billing_postal_code text`);
@@ -203,7 +205,7 @@ app.get("/api/me",auth,async(req,res)=>{
   try{const u=(await q("select id,username,name,role,email,phone,must_change_password,permissions from users where id=$1",[req.user.id]))[0];if(!u)return res.status(404).json({error:"Benutzer nicht gefunden"});res.json(u)}catch(e){res.status(500).json({error:e.message})}
 });
 app.patch("/api/me",auth,async(req,res)=>{
-  try{const name=String(req.body.name||"").trim(),email=String(req.body.email||"").trim()||null,phone=String(req.body.phone||"").trim()||null;if(!name)return res.status(400).json({error:"Name ist erforderlich"});const r=await q("update users set name=$1,email=$2,phone=$3 where id=$4 returning id,username,name,role,email,phone,must_change_password",[name,email,phone,req.user.id]);if(!r[0])return res.status(404).json({error:"Benutzer nicht gefunden"});await audit(req,"PROFILE_UPDATED",r[0].username);res.json(r[0])}catch(e){res.status(500).json({error:e.message})}
+  try{const username=String(req.body.username||"").trim(),name=String(req.body.name||"").trim(),email=String(req.body.email||"").trim()||null,phone=String(req.body.phone||"").trim()||null;if(!username)return res.status(400).json({error:"Benutzername ist erforderlich"});if(!name)return res.status(400).json({error:"Name ist erforderlich"});const dup=await q("select id from users where username=$1 and id<>$2",[username,req.user.id]);if(dup.length)return res.status(409).json({error:"Benutzername bereits vorhanden"});const r=await q("update users set username=$1,name=$2,email=$3,phone=$4 where id=$5 returning id,username,name,role,email,phone,must_change_password",[username,name,email,phone,req.user.id]);if(!r[0])return res.status(404).json({error:"Benutzer nicht gefunden"});await audit(req,"PROFILE_UPDATED",r[0].username);res.json(r[0])}catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/me/password",auth,async(req,res)=>{
   try{const current=String(req.body.currentPassword||""),next=String(req.body.newPassword||"");if(next.length<8)return res.status(400).json({error:"Das neue Passwort muss mindestens 8 Zeichen haben"});const u=(await q("select username,password_hash from users where id=$1",[req.user.id]))[0];if(!u||!(await bcrypt.compare(current,u.password_hash)))return res.status(400).json({error:"Aktuelles Passwort ist falsch"});if(current===next)return res.status(400).json({error:"Das neue Passwort muss sich vom alten unterscheiden"});const hash=await bcrypt.hash(next,12);await q("update users set password_hash=$2,must_change_password=false where id=$1",[req.user.id,hash]);await audit(req,"SELF_PASSWORD_CHANGED",u.username);res.json({ok:true})}catch(e){res.status(500).json({error:e.message})}
@@ -3003,7 +3005,7 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
     const b=req.body||{};
     if(!b.company)return res.status(400).json({error:"Firma erforderlich"});
     const r=await q(\`insert into customers(
-      company,vat_id,address,city,email,phone,lat,lng,customer_number,contact_name,mobile,website,
+      company,vat_id,address,postal_code,city,country,email,phone,lat,lng,customer_number,contact_name,mobile,website,
       billing_address,billing_postal_code,billing_city,payment_terms_days,preferred_language,notes,delivery_instructions
     ) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) returning *\`,
       [b.company,b.vat_id||null,b.address||null,b.city||null,b.email||null,b.phone||null,b.lat||null,b.lng||null,
