@@ -228,7 +228,7 @@ app.post("/api/me/password",auth,async(req,res)=>{
 
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
 q("select id,name,role from users order by name"),q("select * from customers order by company"),q("select * from trips order by created_at desc"),q("select * from vehicles order by name"),
-q("select * from invoices order by issue_date desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),Promise.resolve([]),q("select * from company_settings where id=1")]);
+q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
 res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
 
 app.get("/api/company-settings",auth,async(req,res)=>{
