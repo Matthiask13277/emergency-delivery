@@ -155,7 +155,10 @@ app.on("before-quit",event=>{
     }catch(e){
       console.warn("Local database shutdown failed:",String(e));
     }finally{
-      app.exit(0);
+      // Continue Electron's normal shutdown after the database has been closed.
+      // app.exit() is intentionally avoided because it can terminate before
+      // Chromium/Electron releases native file handles on Windows.
+      app.quit();
     }
   };
   shutdown();
