@@ -38,6 +38,9 @@ async function prepare(){
       from:"emergency.delivery@gmail.com"
     },null,2),"utf8");
   }
+  // The HTTP server must be available before database bootstrap so the UI can
+  // render while PGlite/migrations initialize.
+  if(!backendLoaded){require("./server.js");backendLoaded=true}
   const bootstrap=require("./bootstrap-db.js");
   try{
     await bootstrap();
@@ -49,7 +52,6 @@ async function prepare(){
     await bootstrapRetry();
     console.warn("Local database recovered",{firstError:String(firstError),...recovery});
   }
-  if(!backendLoaded){require("./server.js");backendLoaded=true}
 }
 function ensureDesktopShortcuts(){
   if(!app.isPackaged || process.platform!=="win32") return;
