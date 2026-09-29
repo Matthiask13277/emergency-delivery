@@ -146,13 +146,19 @@ async function createWindow(){
       }
     }
   };
-  bootstrap();
 
   try{
+    // IMPORTANT: render the shell before starting PGlite/bootstrap. PGlite/WASM
+    // startup can temporarily occupy the Electron main process; if bootstrap
+    // starts first Chromium can report ERR_FAILED for the localhost page.
     await win.loadURL(
       `http://127.0.0.1:${process.env.PORT}/desktop-launch.html`,
       {extraHeaders:"pragma: no-cache\nCache-Control: no-cache\n"}
     );
+    // Only initialize the database after the HTML shell has finished loading.
+    // Login/API calls can then wait for the same bootstrap work instead of
+    // preventing the desktop window from appearing.
+    bootstrap();
   }catch(e){
     await dialog.showMessageBox({
       type:"error",
