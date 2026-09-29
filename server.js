@@ -150,8 +150,11 @@ app.get("/sync.js",(req,res)=>res.sendFile(path.join(__dirname,"sync.js")));
 app.get("/desktop-launch.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-launch.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
-ensureV183Columns().catch(err=>console.error('V183 schema init failed:',err));
-ensureCompanySettings().catch(err=>console.error('Company settings init failed:',err));
+// Defer local schema work until after the HTTP listener is bound. This keeps
+// the desktop shell reachable even if PGlite startup or an old local database
+// takes a long time.
+Promise.resolve().then(()=>ensureV183Columns()).catch(err=>console.error('V183 schema init failed:',err));
+Promise.resolve().then(()=>ensureCompanySettings()).catch(err=>console.error('Company settings init failed:',err));
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:false,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:true,operations:false,notifications:true}};
 const PERM_PATHS=[
@@ -6123,17 +6126,21 @@ async function ensureCalendarSchema(){
   )`);
   await q(`CREATE INDEX IF NOT EXISTS idx_calendar_events_dates ON calendar_events(start_date,end_date)`);
 }
-const calendarSchemaReady=ensureCalendarSchema().catch(e=>{console.error('Calendar schema init failed:',e);throw e});
+let calendarSchemaReady=null;
+function getCalendarSchemaReady(){
+  if(!calendarSchemaReady) calendarSchemaReady=Promise.resolve().then(()=>ensureCalendarSchema()).catch(e=>{console.error('Calendar schema init failed:',e);throw e});
+  return calendarSchemaReady;
+}
 
 app.get('/api/calendar/events',auth,async(req,res)=>{
-  try{await calendarSchemaReady;
+  try{await getCalendarSchemaReady();
     const from=req.query.from||'1900-01-01', to=req.query.to||'2999-12-31';
     const rows=await q(`select e.*,u.name as created_by_name from calendar_events e left join users u on u.id=e.created_by where e.start_date <= $2::date and coalesce(e.end_date,e.start_date) >= $1::date order by e.start_date,e.start_time nulls first,e.title`,[from,to]);
     res.json(rows);
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.post('/api/calendar/events',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
-  try{await calendarSchemaReady;
+  try{await getCalendarSchemaReady();
     const b=req.body||{};
     if(!b.title?.trim()||!b.startDate)return res.status(400).json({error:'Titel und Startdatum erforderlich'});
     const r=await q(`insert into calendar_events(title,description,start_date,start_time,end_date,end_time,all_day,location,event_type,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,[
@@ -6143,7 +6150,7 @@ app.post('/api/calendar/events',auth,roles('Admin','Dispatcher','Accounting'),as
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.patch('/api/calendar/events/:id',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
-  try{await calendarSchemaReady;
+  try{await getCalendarSchemaReady();
     const b=req.body||{}, allowed={title:'title',description:'description',startDate:'start_date',startTime:'start_time',endDate:'end_date',endTime:'end_time',allDay:'all_day',location:'location',eventType:'event_type'};
     const keys=Object.keys(allowed).filter(k=>Object.prototype.hasOwnProperty.call(b,k));
     if(!keys.length)return res.status(400).json({error:'Keine Änderungen'});
@@ -6155,7 +6162,7 @@ app.patch('/api/calendar/events/:id',auth,roles('Admin','Dispatcher','Accounting
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.delete('/api/calendar/events/:id',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
-  try{await calendarSchemaReady;
+  try{await getCalendarSchemaReady();
     const r=await q(`delete from calendar_events where id=$1 returning *`,[req.params.id]);
     if(!r[0])return res.status(404).json({error:'Termin nicht gefunden'});
     await audit(req,'CALENDAR_DELETED',r[0].title); res.json({ok:true});
