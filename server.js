@@ -6165,6 +6165,7 @@ app.delete('/api/calendar/events/:id',auth,roles('Admin','Dispatcher','Accountin
 // Single online/server entry point. blitz.cloud supplies PORT (normally 8080).
 // Start the listener both when server.js is the main process and when Electron
 // loads it as a local backend module.
-app.listen(Number(PORT), "0.0.0.0", () => {
+const server=app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`Emergency Delivery local/online server listening on ${PORT}`);
 });
+module.exports={server};
