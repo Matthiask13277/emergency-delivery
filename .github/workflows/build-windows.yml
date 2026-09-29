@@ -23,11 +23,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: emergency-delivery-current-2.2.2-installer
-          path: dist/ED-CURRENT-DESKTOP-2.2.2.exe
+          path: dist/ED-CURRENT-DESKTOP-2.2.2-Setup.exe
           if-no-files-found: error
       - name: Upload portable fallback
         uses: actions/upload-artifact@v4
         with:
           name: emergency-delivery-current-2.2.2-portable
-          path: dist/ED-CURRENT-DESKTOP-2.2.2.exe
+          path: dist/ED-CURRENT-DESKTOP-2.2.2-Portable.exe
           if-no-files-found: error
