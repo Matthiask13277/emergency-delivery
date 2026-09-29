@@ -38,7 +38,22 @@ async function prepare(){
       from:"emergency.delivery@gmail.com"
     },null,2),"utf8");
   }
-  if(!backendLoaded){require("./server.js");backendLoaded=true}
+  if(!backendLoaded){
+    const localServer=require("./server.js").server;
+    backendLoaded=true;
+    if(localServer && !localServer.listening){
+      await new Promise((resolve,reject)=>{
+        const onError=err=>{cleanup();reject(err)};
+        const onListening=()=>{cleanup();resolve()};
+        const cleanup=()=>{
+          localServer.off("error",onError);
+          localServer.off("listening",onListening);
+        };
+        localServer.once("error",onError);
+        localServer.once("listening",onListening);
+      });
+    }
+  }
 }
 function ensureDesktopShortcuts(){
   if(!app.isPackaged || process.platform!=="win32") return;
@@ -114,6 +129,7 @@ async function createWindow(){
   win.webContents.on("did-fail-load",(_e,code,desc,url)=>{
     console.error("Load failed:",code,desc,url);
   });
+  win.webContents.on("did-finish-load",()=>console.log("Desktop UI loaded successfully."));
 
   const bootstrap=async()=>{
     try{
