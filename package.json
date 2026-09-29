@@ -40,7 +40,7 @@
           ]
         }
       ],
-      "artifactName": "ED-CURRENT-DESKTOP-2.2.1.${ext}"
+      "artifactName": "ED-CURRENT-DESKTOP-2.2.2-Portable.${ext}"
     },
     "asar": true,
     "artifactName": "ED-CURRENT-DESKTOP-2.2.2.${ext}",
@@ -51,7 +51,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Emergency Delivery",
       "uninstallDisplayName": "Emergency Delivery",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "ED-CURRENT-DESKTOP-2.2.2-Setup.${ext}"
     }
   },
   "dependencies": {
