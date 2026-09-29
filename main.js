@@ -55,47 +55,11 @@ async function prepare(){
     }
   }
 }
+// Installed Windows builds use the NSIS-created shortcuts directly.
+// Do not replace them with a copied portable EXE: that was the source of
+// the repeated-start problem when the shortcut targeted the old stable copy.
 function ensureDesktopShortcuts(){
-  if(!app.isPackaged || process.platform!=="win32") return;
-  try{
-    const fs=require("fs");
-    const {shell}=require("electron");
-    const appData=app.getPath("appData");
-    const stableDir=path.join(app.getPath("userData"),"app");
-    const stableExe=path.join(stableDir,"Emergency Delivery Desktop.exe");
-    const currentExe=process.execPath;
-
-    fs.mkdirSync(stableDir,{recursive:true});
-
-    // When the app was started from a newly downloaded portable EXE, refresh
-    // the stable copy used by the Desktop/Start Menu shortcuts. When started
-    // from the stable copy itself, never overwrite the running executable.
-    if(path.resolve(currentExe).toLowerCase()!==path.resolve(stableExe).toLowerCase()){
-      const tmpExe=stableExe+".new";
-      try{
-        fs.copyFileSync(currentExe,tmpExe);
-        fs.renameSync(tmpExe,stableExe);
-      }catch(copyError){
-        try{ if(fs.existsSync(tmpExe)) fs.unlinkSync(tmpExe); }catch(_e){}
-        console.warn("Stable desktop EXE refresh failed:",String(copyError));
-      }
-    }
-
-    const targets=[
-      path.join(app.getPath("desktop"),"Emergency Delivery.lnk"),
-      path.join(appData,"Microsoft","Windows","Start Menu","Programs","Emergency Delivery.lnk")
-    ];
-    for(const shortcut of targets){
-      fs.mkdirSync(path.dirname(shortcut),{recursive:true});
-      shell.writeShortcutLink(shortcut,{
-        target:stableExe,
-        cwd:stableDir,
-        description:"Emergency Delivery",
-        icon:stableExe,
-        iconIndex:0
-      });
-    }
-  }catch(e){console.warn("Desktop shortcut creation failed:",String(e))}
+  return;
 }
 
 async function createWindow(){
@@ -103,7 +67,7 @@ async function createWindow(){
   catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.2.1 – Startfehler",
+      title:"Emergency Delivery Desktop 2.2.2 – Startfehler",
       message:e.message,
       detail:"Die lokale Datenbank konnte nicht initialisiert werden."
     });
@@ -112,7 +76,7 @@ async function createWindow(){
   }
 
   const win=new BrowserWindow({
-    title:"Emergency Delivery CURRENT 2.2.1",
+    title:"Emergency Delivery CURRENT 2.2.2",
     width:1440,
     height:900,
     minWidth:1100,
@@ -122,7 +86,7 @@ async function createWindow(){
     webPreferences:{
       contextIsolation:true,
       nodeIntegration:false,
-      partition:"desktop-current-v221"
+      partition:"desktop-current-v222"
     }
   });
 
@@ -162,7 +126,7 @@ async function createWindow(){
   }catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.2.1 – Ladefehler",
+      title:"Emergency Delivery Desktop 2.2.2 – Ladefehler",
       message:"Die Desktop-Oberfläche konnte nicht geladen werden.",
       detail:String(e.stack||e)
     });
