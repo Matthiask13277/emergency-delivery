@@ -168,36 +168,17 @@ async function createWindow(){
     });
   }
 }
-let shuttingDown=false;
-app.on("before-quit",event=>{
-  if(shuttingDown) return;
-  shuttingDown=true;
-  event.preventDefault();
-
-  // The desktop backend is an in-process helper. Do not let a PGlite shutdown
-  // or an open HTTP connection keep the Electron process alive indefinitely.
-  // A lingering helper process is what prevents the portable EXE from opening
-  // a second time.
-  const shutdown=async()=>{
+// Windows portable mode: the local HTTP server lives in this Electron
+// process. When the last window closes, terminate the whole process directly.
+// This deliberately avoids asynchronous DB/server teardown because a lingering
+// shutdown hook can leave the portable executable unable to start again.
+app.on("window-all-closed",()=>{
+  if(process.platform!=="darwin"){
     try{
       const localServer=require("./server.js").server;
-      if(localServer && localServer.listening){
-        await Promise.race([
-          new Promise(resolve=>localServer.close(()=>resolve())),
-          new Promise(resolve=>setTimeout(resolve,2000))
-        ]);
-      }
-    }catch(e){
-      console.warn("Local server shutdown failed:",String(e));
-    }finally{
-      // Do not wait for PGlite/pool teardown here. Windows must get the process
-      // back reliably so the application can be started again immediately.
-      app.exit(0);
-    }
-  };
-  shutdown();
-});
-app.on("window-all-closed",()=>{
-  if(process.platform!=="darwin") app.quit();
+      if(localServer && localServer.listening) localServer.close();
+    }catch(_e){}
+    app.exit(0);
+  }
 });
 app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
