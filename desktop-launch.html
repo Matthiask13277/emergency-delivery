@@ -791,5 +791,10 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load",()=>obs.observe(document.body,{childList:true,subtree:true}));
 })();
 </script>
+<script>
+// Initialize the desktop shell explicitly. Without this call the static page
+// can load successfully but remain completely blank.
+if(T){ load().catch(()=>loginView()); } else { loginView(); }
+</script>
 <script src="/sync.js"></script>
 </body></html>
