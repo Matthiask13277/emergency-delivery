@@ -102,7 +102,7 @@ async function createWindow(){
   catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.2.0 – Startfehler",
+      title:"Emergency Delivery Desktop 2.2.1 – Startfehler",
       message:e.message,
       detail:"Die lokale Datenbank konnte nicht initialisiert werden."
     });
@@ -121,7 +121,7 @@ async function createWindow(){
     webPreferences:{
       contextIsolation:true,
       nodeIntegration:false,
-      partition:"desktop-current-v220"
+      partition:"desktop-current-v221"
     }
   });
 
@@ -137,22 +137,18 @@ async function createWindow(){
   }catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.2.0 – Ladefehler",
+      title:"Emergency Delivery Desktop 2.2.1 – Ladefehler",
       message:"Die Desktop-Oberfläche konnte nicht geladen werden.",
       detail:String(e.stack||e)
     });
   }
 }
-app.on("before-quit",event=>{
-  if(isQuitting)return;
-  isQuitting=true;
-  event.preventDefault();
-  Promise.resolve().then(async()=>{
-    if(backendLoaded){try{const {pool}=require("./local-db.js");await pool.end();}catch(e){console.warn("Local database close failed:",String(e))}}
+app.on("window-all-closed",()=>{
+  if(process.platform!=="darwin"){
+    isQuitting=true;
     app.exit(0);
-  });
+  }
 });
 if(singleInstanceLock){
   app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
-  app.on("window-all-closed",()=>{if(process.platform!=="darwin")app.quit()});
 }
