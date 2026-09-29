@@ -132,17 +132,34 @@ async function createWindow(){
     });
   }
 }
-// Windows portable mode: the local HTTP server lives in this Electron
-// process. When the last window closes, terminate the whole process directly.
-// This deliberately avoids asynchronous DB/server teardown because a lingering
-// shutdown hook can leave the portable executable unable to start again.
-app.on("window-all-closed",()=>{
-  if(process.platform!=="darwin"){
+// Close the local database and HTTP server before the Electron process exits.
+// PGlite can keep a Windows file handle open briefly; killing the process first
+// can leave the database locked for the next launch.
+let shuttingDown=false;
+async function shutdownDesktop(){
+  if(shuttingDown) return;
+  shuttingDown=true;
+  const forceExit=setTimeout(()=>process.exit(0),3000);
+  try{
+    try{
+      const {pool}=require("./local-db.js");
+      await pool.end();
+    }catch(e){ console.warn("Local database shutdown:",String(e)); }
     try{
       const localServer=require("./server.js").server;
-      if(localServer && localServer.listening) localServer.close();
-    }catch(_e){}
-    app.exit(0);
+      if(localServer && localServer.listening){
+        await new Promise(resolve=>{
+          localServer.close(()=>resolve());
+          setTimeout(resolve,1500);
+        });
+      }
+    }catch(e){ console.warn("Local server shutdown:",String(e)); }
+  }finally{
+    clearTimeout(forceExit);
+    process.exit(0);
   }
+}
+app.on("window-all-closed",()=>{
+  if(process.platform!=="darwin") shutdownDesktop();
 });
 app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
