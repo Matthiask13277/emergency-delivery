@@ -1,6 +1,6 @@
 {
   "name": "emergency-delivery-desktop",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -14,7 +14,7 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.emergencydelivery.current.v221",
+    "appId": "com.emergencydelivery.current",
     "productName": "Emergency Delivery Desktop",
     "directories": {
       "output": "dist"
@@ -28,6 +28,12 @@
       "icon": "emergency-delivery.ico",
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -36,7 +42,17 @@
       ],
       "artifactName": "ED-CURRENT-DESKTOP-2.2.1.${ext}"
     },
-    "asar": true
+    "asar": true,
+    "artifactName": "ED-CURRENT-DESKTOP-2.2.2.${ext}",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Emergency Delivery",
+      "uninstallDisplayName": "Emergency Delivery",
+      "deleteAppDataOnUninstall": false
+    }
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
