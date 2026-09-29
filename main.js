@@ -2,19 +2,8 @@ const {app,BrowserWindow,dialog}=require("electron");
 const path=require("path");
 const net=require("net");
 let backendLoaded=false;
-let isQuitting=false;
 
 // Prevent multiple portable instances from locking the local PGlite database.
-const singleInstanceLock=app.requestSingleInstanceLock();
-if(!singleInstanceLock){
-  app.quit();
-}else{
-  app.on("second-instance",()=>{
-    const win=BrowserWindow.getAllWindows()[0];
-    if(win){if(win.isMinimized())win.restore();win.focus();}
-  });
-}
-
 function findFreePort(start=3000){
   return new Promise((resolve,reject)=>{
     const tryPort=(port)=>{
@@ -111,7 +100,7 @@ async function createWindow(){
   }
 
   const win=new BrowserWindow({
-    title:"Emergency Delivery CURRENT 2.2.0",
+    title:"Emergency Delivery CURRENT 2.2.1",
     width:1440,
     height:900,
     minWidth:1100,
@@ -149,6 +138,4 @@ app.on("window-all-closed",()=>{
     app.exit(0);
   }
 });
-if(singleInstanceLock){
-  app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
-}
+app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
