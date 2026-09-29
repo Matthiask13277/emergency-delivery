@@ -86,8 +86,14 @@ async function createWindow(){
     webPreferences:{
       contextIsolation:true,
       nodeIntegration:false,
-      partition:"desktop-current-v222"
+      partition:"persist:desktop-current-v222"
     }
+  });
+
+  // Explicitly allow geolocation for the installed desktop shell.
+  win.webContents.session.setPermissionCheckHandler((_webContents,permission)=>permission==="geolocation");
+  win.webContents.session.setPermissionRequestHandler((_webContents,permission,callback)=>{
+    callback(permission==="geolocation");
   });
 
   win.webContents.on("did-fail-load",(_e,code,desc,url)=>{
