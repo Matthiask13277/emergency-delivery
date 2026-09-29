@@ -149,7 +149,7 @@ async function api(u,o={}){
   if(OT)headers["X-Offline-Authorization"]=OT;
   o.headers=headers;
   let r=await fetch(u,o);
-  if(r.status===401 && OT && offlineMode()){
+  if(r.status===401 && OT){
     const retryHeaders={...originalHeaders,Authorization:"Bearer "+OT};
     o.headers=retryHeaders;
     r=await fetch(u,o);
@@ -384,8 +384,8 @@ async function st(id,s){
   }
 }
 async function gps(id){
-  if(!navigator.geolocation)return alert("GPS nicht verfügbar");
-  navigator.geolocation.getCurrentPosition(async p=>{
+  if(!navigator.geolocation)return alert("GPS ist auf diesem Gerät nicht verfügbar.");
+  const savePosition=async(p)=>{
     const action={type:"gps",tripId:id,lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};
     if(!navigator.onLine){
       edEnqueue(action);
@@ -411,7 +411,11 @@ async function gps(id){
       view("driver");
       alert("Internet nicht verfügbar. GPS lokal gespeichert.");
     }
-  },e=>alert(e.message),{enableHighAccuracy:true,timeout:15000,maximumAge:0})
+  };
+  navigator.geolocation.getCurrentPosition(savePosition,e=>{
+    const msg=e?.code===1?"Standortzugriff wurde blockiert. Bitte den Standortdienst von Windows aktivieren.":e?.code===2?"Windows/Electron konnte keinen Standort liefern. Bitte Windows-Standort aktivieren und WLAN/LAN eingeschaltet lassen.":e?.code===3?"Standortabfrage hat zu lange gedauert. Bitte erneut versuchen.":"Standort konnte nicht ermittelt werden.";
+    alert(msg);
+  },{enableHighAccuracy:true,timeout:20000,maximumAge:60000});
 }
 function nav(r){window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(r),"_blank")}
 function canvas(id){let x=document.getElementById("sig-"+id),c=x.getContext("2d"),d=false;x.onpointerdown=e=>{d=true;c.beginPath();c.moveTo(e.offsetX,e.offsetY)};x.onpointermove=e=>{if(d){c.lineTo(e.offsetX,e.offsetY);c.stroke()}};x.onpointerup=()=>d=false}
