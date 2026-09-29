@@ -132,10 +132,27 @@ async function createWindow(){
     });
   }
 }
+let shuttingDown=false;
+app.on("before-quit",event=>{
+  if(shuttingDown) return;
+  shuttingDown=true;
+  event.preventDefault();
+  const shutdown=async()=>{
+    try{
+      const {pool}=require("./local-db.js");
+      await Promise.race([
+        pool.end(),
+        new Promise(resolve=>setTimeout(resolve,5000))
+      ]);
+    }catch(e){
+      console.warn("Local database shutdown failed:",String(e));
+    }finally{
+      app.exit(0);
+    }
+  };
+  shutdown();
+});
 app.on("window-all-closed",()=>{
-  if(process.platform!=="darwin"){
-    isQuitting=true;
-    app.exit(0);
-  }
+  if(process.platform!=="darwin") app.quit();
 });
 app.whenReady().then(async()=>{ensureDesktopShortcuts();await createWindow()});
