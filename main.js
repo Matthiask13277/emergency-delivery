@@ -38,20 +38,7 @@ async function prepare(){
       from:"emergency.delivery@gmail.com"
     },null,2),"utf8");
   }
-  // The HTTP server must be available before database bootstrap so the UI can
-  // render while PGlite/migrations initialize.
   if(!backendLoaded){require("./server.js");backendLoaded=true}
-  const bootstrap=require("./bootstrap-db.js");
-  try{
-    await bootstrap();
-  }catch(firstError){
-    const {recoverLocalDb}=require("./local-db.js");
-    const recovery=await recoverLocalDb();
-    try{ delete require.cache[require.resolve("./bootstrap-db.js")]; }catch(_e){}
-    const bootstrapRetry=require("./bootstrap-db.js");
-    await bootstrapRetry();
-    console.warn("Local database recovered",{firstError:String(firstError),...recovery});
-  }
 }
 function ensureDesktopShortcuts(){
   if(!app.isPackaged || process.platform!=="win32") return;
@@ -127,6 +114,23 @@ async function createWindow(){
   win.webContents.on("did-fail-load",(_e,code,desc,url)=>{
     console.error("Load failed:",code,desc,url);
   });
+
+  const bootstrap=async()=>{
+    try{
+      await require("./bootstrap-db.js")();
+    }catch(firstError){
+      try{
+        const {recoverLocalDb}=require("./local-db.js");
+        const recovery=await recoverLocalDb();
+        delete require.cache[require.resolve("./bootstrap-db.js")];
+        await require("./bootstrap-db.js")();
+        console.warn("Local database recovered",{firstError:String(firstError),...recovery});
+      }catch(recoveryError){
+        console.error("Local database bootstrap failed:",String(recoveryError));
+      }
+    }
+  };
+  bootstrap();
 
   try{
     await win.loadURL(
