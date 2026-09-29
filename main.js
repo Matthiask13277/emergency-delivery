@@ -63,11 +63,18 @@ function ensureDesktopShortcuts(){
 
     fs.mkdirSync(stableDir,{recursive:true});
 
-    // Keep a stable copy in the user's profile. This prevents the Desktop/Start
-    // Menu shortcut from breaking when the downloaded portable EXE is moved
-    // or deleted from Downloads.
+    // When the app was started from a newly downloaded portable EXE, refresh
+    // the stable copy used by the Desktop/Start Menu shortcuts. When started
+    // from the stable copy itself, never overwrite the running executable.
     if(path.resolve(currentExe).toLowerCase()!==path.resolve(stableExe).toLowerCase()){
-      fs.copyFileSync(currentExe,stableExe);
+      const tmpExe=stableExe+".new";
+      try{
+        fs.copyFileSync(currentExe,tmpExe);
+        fs.renameSync(tmpExe,stableExe);
+      }catch(copyError){
+        try{ if(fs.existsSync(tmpExe)) fs.unlinkSync(tmpExe); }catch(_e){}
+        console.warn("Stable desktop EXE refresh failed:",String(copyError));
+      }
     }
 
     const targets=[
@@ -86,6 +93,7 @@ function ensureDesktopShortcuts(){
     }
   }catch(e){console.warn("Desktop shortcut creation failed:",String(e))}
 }
+
 async function createWindow(){
   try{await prepare();}
   catch(e){
