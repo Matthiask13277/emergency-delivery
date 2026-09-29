@@ -173,25 +173,26 @@ app.on("before-quit",event=>{
   if(shuttingDown) return;
   shuttingDown=true;
   event.preventDefault();
+
+  // The desktop backend is an in-process helper. Do not let a PGlite shutdown
+  // or an open HTTP connection keep the Electron process alive indefinitely.
+  // A lingering helper process is what prevents the portable EXE from opening
+  // a second time.
   const shutdown=async()=>{
     try{
-      const {pool}=require("./local-db.js");
-      await Promise.race([
-        pool.end(),
-        new Promise(resolve=>setTimeout(resolve,5000))
-      ]);
-      try{
-        const localServer=require("./server.js").server;
-        if(localServer && localServer.listening){
-          await new Promise(resolve=>localServer.close(()=>resolve()));
-        }
-      }catch(serverError){
-        console.warn("Local server shutdown failed:",String(serverError));
+      const localServer=require("./server.js").server;
+      if(localServer && localServer.listening){
+        await Promise.race([
+          new Promise(resolve=>localServer.close(()=>resolve())),
+          new Promise(resolve=>setTimeout(resolve,2000))
+        ]);
       }
     }catch(e){
-      console.warn("Local database shutdown failed:",String(e));
+      console.warn("Local server shutdown failed:",String(e));
     }finally{
-      app.quit();
+      // Do not wait for PGlite/pool teardown here. Windows must get the process
+      // back reliably so the application can be started again immediately.
+      app.exit(0);
     }
   };
   shutdown();
