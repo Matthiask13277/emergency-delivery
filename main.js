@@ -152,12 +152,17 @@ app.on("before-quit",event=>{
         pool.end(),
         new Promise(resolve=>setTimeout(resolve,5000))
       ]);
+      try{
+        const localServer=require("./server.js").server;
+        if(localServer && localServer.listening){
+          await new Promise(resolve=>localServer.close(()=>resolve()));
+        }
+      }catch(serverError){
+        console.warn("Local server shutdown failed:",String(serverError));
+      }
     }catch(e){
       console.warn("Local database shutdown failed:",String(e));
     }finally{
-      // Continue Electron's normal shutdown after the database has been closed.
-      // app.exit() is intentionally avoided because it can terminate before
-      // Chromium/Electron releases native file handles on Windows.
       app.quit();
     }
   };
