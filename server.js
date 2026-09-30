@@ -2571,6 +2571,43 @@ app.get("/api/dispatch/board",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     res.json({date,trips,orders,stops})
   }catch(e){res.status(500).json({error:e.message})}
 });
+app.post("/api/dispatch/create-tour",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+  try{
+    const date=req.body.date||new Date().toISOString().slice(0,10);
+    const orderIds=Array.isArray(req.body.order_ids)?req.body.order_ids.filter(Boolean):[];
+    if(!orderIds.length)return res.status(400).json({error:"Bitte mindestens einen Auftrag auswählen."});
+    const orders=await q(`select o.*,c.company customer_company
+      from orders o left join customers c on c.id=o.customer_id
+      where o.id = any($1::uuid[]) and coalesce(o.status,'new') in ('new','planned')
+      and o.assigned_trip_id is null and o.planned_trip_id is null
+      order by o.created_at,o.id`,[orderIds]);
+    if(orders.length!==orderIds.length)return res.status(400).json({error:"Mindestens ein Auftrag ist bereits einer Tour zugewiesen oder nicht mehr offen."});
+    const totalWeight=orders.reduce((a,o)=>a+Number(o.weight_kg||0),0);
+    if(totalWeight>1000)return res.status(400).json({error:`Gesamtgewicht ${totalWeight.toFixed(1)} KG überschreitet 1.000 KG.`});
+    const totalPieces=orders.reduce((a,o)=>a+Number(o.pieces||0),0);
+    const totalPrice=orders.reduce((a,o)=>a+Number(o.price_net||0),0);
+    const stamp=Date.now().toString().slice(-8);
+    const tripNumber="TR-"+stamp;
+    const trip=(await q(`insert into trips(
+      trip_number,customer_id,driver_id,vehicle_id,status,priority,weight_kg,pieces,price_net,
+      planned_revenue_net,planning_date,planned_sequence,planned_start_at,dispatcher_note,notes
+    ) values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$8,$9,1,$10,$11,$12) returning *`,
+      [tripNumber,orders[0].customer_id||null,req.body.driver_id||null,req.body.vehicle_id||null,
+       req.body.priority||"normal",totalWeight,totalPieces,totalPrice,date,req.body.planned_start_at||null,
+       req.body.dispatcher_note||null,"Manuell im Operations Board geplant"]))[0];
+    let seq=1;
+    for(const o of orders){
+      await q(`insert into trip_stops(
+        trip_id,stop_order,planned_sequence,address,city,customer_name,status
+      ) values($1,$2,$2,$3,$4,$5,'Pending')`,
+        [trip.id,seq++,o.delivery_address||"",o.delivery_city||null,o.customer_company||""]);
+      await q(`update orders set assigned_trip_id=$1,planned_trip_id=$1,status='planned',planned_at=now() where id=$2`,[trip.id,o.id]);
+    }
+    await audit(req,"OPERATIONS_TOUR_CREATE",`${trip.trip_number}: ${orders.length} Auftrag/Aufträge für ${date}`);
+    res.status(201).json({ok:true,trip,order_count:orders.length});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
 app.post("/api/dispatch/move-order",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   const {order_id,target_trip_id,position}=req.body;
   try{
