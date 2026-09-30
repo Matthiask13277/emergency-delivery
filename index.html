@@ -706,12 +706,21 @@ async function loadOrder360(id){
       '<label>Lieferort<input id="o360DeliveryCity" value="'+esc(o.delivery_city||"")+'"></label>'+
       '<label>Kundenreferenz<input id="o360CustomerRef" value="'+esc(o.customer_reference||"")+'"></label>'+
       '<label>Dispo-Notiz<input id="o360Note" value="'+esc(o.dispatch_note||"")+'"></label></div>'+
-      '<div class="modal-actions" style="margin-top:16px"><button class="btn primary" onclick="saveOrder360(\''+o.id+'\')">Auftrag speichern</button></div></div>'+
+      '<div class="modal-actions" style="margin-top:16px"><button class="btn primary" onclick="saveOrder360(\''+o.id+'\')">Auftrag speichern</button><button class="btn secondary" onclick="deleteOrder360(\''+o.id+'\')">Auftrag löschen</button></div></div>'+
       '<div class="panel"><h3>Kunde</h3><p><b>'+esc(o.customer_company||"-")+'</b></p><p class="muted">'+esc(o.customer_address||"")+'<br>'+esc(o.customer_city||"")+'<br>'+esc(o.customer_email||"")+'<br>'+esc(o.customer_phone||"")+'</p><h3>Disposition</h3><p>'+(t?'<b>'+esc(t.trip_number||"")+'</b><br>'+esc(t.driver_name||"Kein Fahrer")+' · '+esc(t.vehicle_name||"Kein Fahrzeug")+'<br>'+Number(t.weight_kg||0)+' KG · '+esc(t.status||""):"Noch keiner Tour zugeordnet.")+'</p></div></div>'+
       '<div class="panel"><h3>Stopps</h3>'+stopHtml+'</div>'+
       '<div class="panel"><h3>Rechnungen des Kunden</h3>'+invoiceHtml+'</div>';
   }catch(e){box.innerHTML='<div class="panel"><p class="error">'+esc(e.message)+'</p></div>'}
 }
+async function deleteOrder360(id){
+ if(!confirm("Auftrag wirklich endgültig löschen?\n\nDiese Aktion kann nicht rückgängig gemacht werden."))return;
+ try{
+   await api("/api/orders/"+id,{method:"DELETE"});
+   await refreshState();
+   view("order360");
+ }catch(e){alert(e.message)}
+}
+
 async function saveOrder360(id){
   const kg=Number(document.getElementById("o360Kg").value||0); if(kg>1000)return alert("Maximal 1.000 KG");
   const body={reference:document.getElementById("o360Reference").value.trim(),customer_id:document.getElementById("o360Customer").value,pickup_address:document.getElementById("o360Pickup").value.trim(),pickup_city:document.getElementById("o360PickupCity").value.trim(),delivery_address:document.getElementById("o360Delivery").value.trim(),delivery_city:document.getElementById("o360DeliveryCity").value.trim(),weight_kg:kg,pieces:Number(document.getElementById("o360Pieces").value||1),customer_reference:document.getElementById("o360CustomerRef").value.trim(),priority:document.getElementById("o360Priority").value,requested_date:document.getElementById("o360Date").value||null,price_net:Number(document.getElementById("o360Price").value||0),status:document.getElementById("o360Status").value,dispatch_note:document.getElementById("o360Note").value.trim()};
