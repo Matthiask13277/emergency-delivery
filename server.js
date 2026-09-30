@@ -3784,8 +3784,29 @@ async function v87BuildDdtPdf(t,stops,ddt){
   const transportTop=Math.min(y+10,transportY-46);
   doc.font("Helvetica-Bold").fontSize(10).text("Transportdaten",48,transportTop);
   doc.font("Helvetica").fontSize(9).text(`Fahrer: ${t.driver_name||"—"}`,48,transportTop+18);
-  doc.text(`Fahrzeug: ${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}`,280,transportTop+18);
-  
+  doc.text(`Fahrzeug: ${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}`,48,transportTop+34);
+
+  // Digitale Kundenunterschrift: Die Unterschrift wird direkt auf dem Lieferschein
+  // unter der Empfangsbestätigung ausgegeben, sofern der Fahrer sie erfasst hat.
+  const sigX=310, sigY=transportTop, sigW=237, sigH=58;
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#172033").text("Empfangsbestätigung / Kundenunterschrift",sigX,sigY,{width:sigW});
+  doc.rect(sigX,sigY+14,sigW,sigH-14).strokeColor("#d0d5dd").stroke();
+  if(t.signature_data){
+    try{
+      const raw=String(t.signature_data);
+      const base64=raw.includes(",")?raw.split(",").pop():raw;
+      const sigBuf=Buffer.from(base64,"base64");
+      doc.image(sigBuf,sigX+8,sigY+19,{fit:[sigW-16,35],align:"center",valign:"center"});
+    }catch(e){
+      doc.font("Helvetica").fontSize(7).fillColor("#667085").text("Unterschrift konnte nicht dargestellt werden.",sigX+8,sigY+34,{width:sigW-16,align:"center"});
+    }
+  }else{
+    doc.font("Helvetica").fontSize(7).fillColor("#667085").text("Keine digitale Unterschrift erfasst.",sigX+8,sigY+34,{width:sigW-16,align:"center"});
+  }
+  if(t.signature_at){
+    doc.font("Helvetica").fontSize(6.5).fillColor("#667085").text("Unterzeichnet am: "+new Date(t.signature_at).toLocaleString("de-DE"),sigX,sigY+74,{width:sigW,align:"center"});
+  }
+
   const footer=[company.company_name,company.legal_name,[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.vat_id?`P.IVA: ${company.vat_id}`:"",company.phone?`Tel. ${company.phone}`:"",company.email||"",company.footer_note||""];
   doc.fillColor("#172033").fontSize(7).text(footer.filter(Boolean).join(" · "),48,footerY,{width:499,align:"center"});
   doc.end(); await done; return Buffer.concat(chunks)
