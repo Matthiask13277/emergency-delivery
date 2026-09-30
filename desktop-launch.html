@@ -289,17 +289,17 @@ if(p==="driver"){
           '<div class="panel"><b>'+(i+1)+'. '+esc(s.customer_name||"Lieferung")+
           '</b><div class="muted">'+esc(s.address||"")+
           '</div><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180"></canvas><br>'+
-          '<button class="btn" onclick="saveStopSignature(\\''+s.id+'\\')">Unterschrift auf Lieferschein speichern</button></div>'
+          '<button class="btn" onclick="saveStopSignature(\''+s.id+'\')">Unterschrift auf Lieferschein speichern</button></div>'
         ).join("") || "<p class='muted'>Keine Stopps vorhanden.</p>"
       );
     }
     return '<div class="panel"><b>'+esc(t.trip_number||"")+'</b> · '+esc(t.route||"")+
       '<p>'+Number(t.weight_kg||0)+' KG · '+esc(t.status||"")+
       '</p><div class="row">'+
-      '<button class="btn" onclick="st(\\''+t.id+'\\',\\'In Transit\\')">Unterwegs</button>'+
-      '<button class="btn" onclick="st(\\''+t.id+'\\',\\'Delivered\\')">Geliefert</button>'+
+      '<button class="btn" onclick="st(\''+t.id+'\',\'In Transit\')">Unterwegs</button>'+
+      '<button class="btn" onclick="st(\''+t.id+'\',\'Delivered\')">Geliefert</button>'+
       '<button class="btn secondary" onclick="gps(this.dataset.id)" data-id="'+t.id+'">GPS aktualisieren</button>'+
-      '<button class="btn secondary" onclick="nav(\\''+(t.route||"")+ '\\')">Navigation</button>'+
+      '<button class="btn secondary" onclick="nav(\''+(t.route||"")+ '\')">Navigation</button>'+
       '</div>'+signatureHtml+'</div>';
   }).join("") || "Keine Fahrten.";
   c.innerHTML='<div class="panel"><h2>Fahrer-App</h2>'+cards+'</div>';
