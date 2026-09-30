@@ -267,6 +267,18 @@ app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.patch("/api/trips/:id",auth,async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
+app.delete("/api/trips/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+  try{
+    const t=(await q("select id,trip_number,status from trips where id=$1",[req.params.id]))[0];
+    if(!t)return res.status(404).json({error:"Auftrag nicht gefunden"});
+    const inv=await q("select invoice_number,status from invoices where trip_id=$1",[req.params.id]);
+    if(inv.length)return res.status(409).json({error:"Dieser Auftrag kann nicht gelöscht werden, weil bereits eine Rechnung vorhanden ist. Rechnung zuerst bearbeiten/löschen."});
+    await q("delete from trips where id=$1",[req.params.id]);
+    await audit(req,"TRIP_DELETED",t.trip_number);
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht gelöscht werden"})}
+});
+
 async function autoInvoice(req,t){const exists=(await q("select id from invoices where trip_id=$1",[t.id]))[0];if(exists)return;const n=await q("select 'INV-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(invoice_number,'-',3) as int)),0)+1)::text,4,'0') n from invoices");const net=+t.price_net,vat=+(net*.22).toFixed(2);await q("insert into invoices(invoice_number,customer_id,trip_id,net,vat_rate,vat,gross,status,description) values($1,$2,$3,$4,22,$5,$6,'Open',$7)",[n[0].n,t.customer_id, t.id,net,vat,net+vat,"Automatiche Rechnung für "+t.trip_number]);await audit(req,"AUTO_INVOICE_CREATED",t.trip_number)}
 app.post("/api/gps",auth,roles("Driver"),async(req,res)=>{const t=(await q("select id from trips where id=$1 and driver_id=$2",[req.body.tripId,req.user.id]))[0];if(!t)return res.status(404).json({error:"Trip not found"});const r=await q("insert into gps_points(trip_id,driver_id,lat,lng,accuracy) values($1,$2,$3,$4,$5) returning *",[t.id,req.user.id,req.body.lat,req.body.lng,req.body.accuracy||null]);await q("update trips set current_lat=$1,current_lng=$2,updated_at=now() where id=$3",[req.body.lat,req.body.lng,t.id]);res.json(r[0])});
 app.post("/api/documents/ddt-manual",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
@@ -467,6 +479,21 @@ app.patch('/api/orders/:id', auth, async (req,res) => {
 });
 
 // V194: Auftrag 360 Detail- und Bearbeitungsansicht
+app.delete('/api/orders/:id', auth, roles('Admin','Dispatcher'), async (req,res) => {
+  try {
+    const o=(await q("select id,reference,planned_trip_id,assigned_trip_id,delivery_address from orders where id=$1",[req.params.id]))[0];
+    if(!o)return res.status(404).json({error:'Auftrag nicht gefunden.'});
+    const tripId=o.planned_trip_id||o.assigned_trip_id;
+    if(tripId){
+      if(o.delivery_address) await q("delete from trip_stops where trip_id=$1 and address=$2",[tripId,o.delivery_address]);
+      await q("update trips set weight_kg=coalesce((select sum(weight_kg) from orders where planned_trip_id=$1 and id<>$2),0),price_net=coalesce((select sum(price_net) from orders where planned_trip_id=$1 and id<>$2),0),updated_at=now() where id=$1",[tripId,req.params.id]);
+    }
+    await q("delete from orders where id=$1",[req.params.id]);
+    await audit(req,"ORDER_DELETED",o.reference||req.params.id);
+    res.json({ok:true});
+  } catch(e) { res.status(500).json({error:e.message||'Auftrag konnte nicht gelöscht werden.'}); }
+});
+
 app.get('/api/orders/:id/360', auth, async (req,res) => {
   try {
     const order = (await q(`select o.*,c.company customer_company,c.address customer_address,c.city customer_city,c.email customer_email,c.phone customer_phone
