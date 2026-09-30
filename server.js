@@ -257,11 +257,12 @@ app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     // auch in Auftrag 360° bearbeitet und für die Rechnungsakte verwendet werden kann.
     try{
       const ref="ORD-"+Date.now().toString(36).toUpperCase();
-      await q(`insert into orders(customer_id,reference,delivery_address,delivery_city,weight_kg,pieces,priority,price_net,status,planned_trip_id,assigned_trip_id,planned_at)
-        values($1,$2,$3,$4,$5,$6,'normal',$7,'planned',$8,$8,now())`,
+      await q(`insert into orders(customer_id,reference,delivery_address,delivery_city,weight_kg,pieces,priority,price_net,status,planned_trip_id,planned_at)
+        values($1,$2,$3,$4,$5,$6,'normal',$7,'planned',$8,now())`,
         [req.body.customerId,ref,req.body.route||"",req.body.route||"",w,+req.body.pieces||1,price,r[0].id]);
     }catch(orderErr){
       console.warn("Auftrag+ order link:",String(orderErr));
+      return res.status(500).json({error:"Auftrag wurde erstellt, konnte aber nicht mit Auftrag 360° verknüpft werden: "+orderErr.message});
     }
     await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0]);
   }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht erstellt werden"})}
