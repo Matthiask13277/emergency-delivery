@@ -282,14 +282,13 @@ if(p==="driver"){
   const m=S.trips.filter(t=>t.driver_id===S.user.id);
   const cards=m.map(t=>{
     const stops=(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).sort((a,b)=>Number(a.stop_order||0)-Number(b.stop_order||0));
-    const signatureHtml=t.status==="Delivered"
-      ? '<h4>Kundenunterschrift auf dem Lieferschein</h4>'+stops.map((s,i)=>
-          '<div class="panel"><b>'+(i+1)+'. '+esc(s.customer_name||"Lieferung")+
-          '</b><div class="muted">'+esc(s.address||"")+
-          '</div><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180"></canvas><br>'+
-          '<button class="btn" data-signature-id="'+s.id+'">Unterschrift auf Lieferschein speichern</button></div>'
-        ).join("")+(stops.length?"":"<p class='muted'>Keine Stopps vorhanden.</p>")
-      : "";
+    const signatureHtml='<h4>Kundenunterschrift auf dem Lieferschein</h4>'+
+      (stops.map((s,i)=>
+        '<div class="panel"><b>'+(i+1)+'. '+esc(s.customer_name||"Lieferung")+
+        '</b><div class="muted">'+esc(s.address||"")+
+        '</div><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180" style="touch-action:none;cursor:crosshair"></canvas><br>'+
+        '<button class="btn" data-signature-id="'+s.id+'">Unterschrift auf Lieferschein speichern</button></div>'
+      ).join("") || "<p class='muted'>Keine Stopps vorhanden.</p>");
     return '<div class="panel"><b>'+esc(t.trip_number||"")+'</b> · '+esc(t.route||"")+
       '<p>'+Number(t.weight_kg||0)+' KG · '+esc(t.status||"")+
       '</p><div class="row">'+
@@ -446,7 +445,7 @@ async function gps(id){
   },{enableHighAccuracy:true,timeout:20000,maximumAge:60000});
 }
 function nav(r){window.open("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(r),"_blank")}
-function canvasStop(id,stored){let x=document.getElementById("sig-stop-"+id);if(!x)return;let c=x.getContext("2d"),d=false;x.onpointerdown=e=>{d=true;c.beginPath();c.moveTo(e.offsetX,e.offsetY)};x.onpointermove=e=>{if(d){c.lineTo(e.offsetX,e.offsetY);c.stroke()}};x.onpointerup=()=>d=false;if(stored){const img=new Image();img.onload=()=>c.drawImage(img,0,0,x.width,x.height);img.src=stored}}
+function canvasStop(id,stored){const x=document.getElementById("sig-stop-"+id);if(!x)return;const c=x.getContext("2d");let d=false;c.lineWidth=2.5;c.lineCap="round";c.lineJoin="round";const pos=e=>{const r=x.getBoundingClientRect();return{x:(e.clientX-r.left)*(x.width/r.width),y:(e.clientY-r.top)*(x.height/r.height)}};x.onpointerdown=e=>{e.preventDefault();d=true;x.setPointerCapture?.(e.pointerId);const p=pos(e);c.beginPath();c.moveTo(p.x,p.y)};x.onpointermove=e=>{if(!d)return;e.preventDefault();const p=pos(e);c.lineTo(p.x,p.y);c.stroke()};x.onpointerup=e=>{d=false;try{x.releasePointerCapture?.(e.pointerId)}catch(_){}};x.onpointercancel=()=>{d=false};if(stored){const img=new Image();img.onload=()=>c.drawImage(img,0,0,x.width,x.height);img.src=stored}}
 async function saveStopSignature(id){const x=document.getElementById("sig-stop-"+id);if(!x)return;try{const data=x.toDataURL("image/png");await api("/api/stops/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({signature_data:data,status:"Delivered"})});const stop=(S.stops||[]).find(s=>String(s.id)===String(id));if(stop)stop.signature_data=data;alert("Unterschrift wurde auf dem Lieferschein gespeichert.");}catch(e){alert(e.message)}}
 async function live(){let s=await api("/api/state");livebox.innerHTML=s.gps.map(g=>{let t=s.trips.find(x=>x.id===g.trip_id),u=s.users.find(x=>x.id===g.driver_id);return `<div class="vehicle"><span class="dot"></span><b>${u?.name||"Fahrer"}</b> · ${t?.trip_number||""}<br>${g.lat}, ${g.lng} · ${new Date(g.created_at).toLocaleString()} <button class="btn secondary" onclick="window.open('https://www.google.com/maps?q=${g.lat},${g.lng}','_blank')">Maps</button></div>`}).join("")||"Keine aktuellen GPS-Daten."}
 async function cust(){await api("/api/customers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({company:co.value,vatId:va.value,address:ad.value,city:ci.value,email:em.value,phone:ph.value})});load()}
