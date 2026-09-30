@@ -279,30 +279,36 @@ if(contentPage==="dispatch")c.innerHTML=`<div class="page-head"><div><div class=
 if(p==="vehicles"){c.innerHTML=`<div class="page-head"><div><div class="eyebrow">FUHRPARK</div><h2>Fahrzeuge</h2><p class="muted">Fahrzeuge anlegen, bearbeiten und erweitern.</p></div><button class="btn primary" onclick="openVehicle()">+ Fahrzeug hinzufügen</button></div><div class="grid">${S.vehicles.map(v=>`<div class="stat"><span>${esc(v.name)}</span><b>${esc(v.plate)}</b><div class="muted">${esc(v.make||"")} ${esc(v.model||"")} · ${v.active===false?"Inaktiv":"Aktiv"}</div><div class="row" style="margin-top:10px"><button class="btn secondary" onclick="openVehicle('${v.id}')">Bearbeiten</button><button class="btn secondary" onclick="deleteVehicle('${v.id}')">Löschen</button></div></div>`).join("")}</div>`;}
 if(p==="live")c.innerHTML=`<div class="panel"><h2>Live-Fahrzeuge</h2><p class="muted">Positionen werden automatisch alle 10 Sekunden aktualisiert.</p><div class="live" id="livebox"></div></div>`; if(p==="live"){live();setInterval(live,10000)}
 if(p==="driver"){
-  let m=S.trips.filter(t=>t.driver_id===S.user.id);
+  const m=S.trips.filter(t=>t.driver_id===S.user.id);
   const cards=m.map(t=>{
     const stops=(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).sort((a,b)=>Number(a.stop_order||0)-Number(b.stop_order||0));
-    let signatureHtml="";
-    if(t.status==="Delivered"){
-      signatureHtml='<h4>Kundenunterschrift auf dem Lieferschein</h4>'+(
-        stops.map((s,i)=>
+    const signatureHtml=t.status==="Delivered"
+      ? '<h4>Kundenunterschrift auf dem Lieferschein</h4>'+stops.map((s,i)=>
           '<div class="panel"><b>'+(i+1)+'. '+esc(s.customer_name||"Lieferung")+
           '</b><div class="muted">'+esc(s.address||"")+
           '</div><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180"></canvas><br>'+
-          '<button class="btn" onclick="saveStopSignature(\''+s.id+'\')">Unterschrift auf Lieferschein speichern</button></div>'
-        ).join("") || "<p class='muted'>Keine Stopps vorhanden.</p>"
-      );
-    }
+          '<button class="btn" data-signature-id="'+s.id+'">Unterschrift auf Lieferschein speichern</button></div>'
+        ).join("")+(stops.length?"":"<p class='muted'>Keine Stopps vorhanden.</p>")
+      : "";
     return '<div class="panel"><b>'+esc(t.trip_number||"")+'</b> · '+esc(t.route||"")+
       '<p>'+Number(t.weight_kg||0)+' KG · '+esc(t.status||"")+
       '</p><div class="row">'+
-      '<button class="btn" onclick="st(\''+t.id+'\',\'In Transit\')">Unterwegs</button>'+
-      '<button class="btn" onclick="st(\''+t.id+'\',\'Delivered\')">Geliefert</button>'+
-      '<button class="btn secondary" onclick="gps(this.dataset.id)" data-id="'+t.id+'">GPS aktualisieren</button>'+
-      '<button class="btn secondary" onclick="nav(\''+(t.route||"")+ '\')">Navigation</button>'+
+      '<button class="btn" data-trip-action="transit" data-trip-id="'+t.id+'">Unterwegs</button>'+
+      '<button class="btn" data-trip-action="delivered" data-trip-id="'+t.id+'">Geliefert</button>'+
+      '<button class="btn secondary" data-trip-action="gps" data-trip-id="'+t.id+'">GPS aktualisieren</button>'+
+      '<button class="btn secondary" data-trip-action="nav" data-route="'+esc(t.route||"")+'">Navigation</button>'+
       '</div>'+signatureHtml+'</div>';
   }).join("") || "Keine Fahrten.";
   c.innerHTML='<div class="panel"><h2>Fahrer-App</h2>'+cards+'</div>';
+  c.querySelectorAll("[data-trip-action]").forEach(btn=>{
+    const id=btn.dataset.tripId;
+    const action=btn.dataset.tripAction;
+    if(action==="transit")btn.addEventListener("click",()=>st(id,"In Transit"));
+    if(action==="delivered")btn.addEventListener("click",()=>st(id,"Delivered"));
+    if(action==="gps")btn.addEventListener("click",()=>gps(id));
+    if(action==="nav")btn.addEventListener("click",()=>nav(btn.dataset.route||""));
+  });
+  c.querySelectorAll("[data-signature-id]").forEach(btn=>btn.addEventListener("click",()=>saveStopSignature(btn.dataset.signatureId)));
   m.filter(t=>t.status==="Delivered").forEach(t=>(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).forEach(s=>canvasStop(s.id,s.signature_data)));
 }
 if(p==="customers"){
