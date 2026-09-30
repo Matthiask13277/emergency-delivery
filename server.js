@@ -246,7 +246,26 @@ app.patch("/api/company-settings",auth,roles("Admin"),async(req,res)=>{
 });
 
 app.post("/api/customers",auth,roles("Admin","Dispatcher"),async(req,res)=>{const r=await q("insert into customers(company,vat_id,address,city,email,phone) values($1,$2,$3,$4,$5,$6) returning *",[req.body.company,req.body.vatId,req.body.address,req.body.city,req.body.email,req.body.phone]);await audit(req,"CUSTOMER_CREATED",r[0].company);res.json(r[0])});
-app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{const w=+req.body.weightKg||0;if(w>1000)return res.status(400).json({error:"Maximum 1,000 KG"});const n=await q("select 'TRIP-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(trip_number,'-',3) as int)),0)+1)::text,4,'0') n from trips");const r=await q("insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net) values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9) returning *",[n[0].n,req.body.customerId,w,+req.body.pieces||1,req.body.driverId||null,req.body.vehicleId||null,req.body.route||"",req.body.notes||"",+req.body.priceNet||0]);await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0])});
+app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+  try{
+    const w=+req.body.weightKg||0;if(w>1000)return res.status(400).json({error:"Maximum 1,000 KG"});
+    const n=await q("select 'TRIP-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(trip_number,'-',3) as int)),0)+1)::text,4,'0') n from trips");
+    const price=+req.body.priceNet||0;
+    const r=await q("insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net) values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9) returning *",
+      [n[0].n,req.body.customerId,w,+req.body.pieces||1,req.body.driverId||null,req.body.vehicleId||null,req.body.route||"",req.body.notes||"",price]);
+    // Auftrag+ erzeugt damit zusätzlich einen echten Auftrag, damit der Datensatz
+    // auch in Auftrag 360° bearbeitet und für die Rechnungsakte verwendet werden kann.
+    try{
+      const ref="ORD-"+Date.now().toString(36).toUpperCase();
+      await q(`insert into orders(customer_id,reference,delivery_address,delivery_city,weight_kg,pieces,priority,price_net,status,planned_trip_id,assigned_trip_id,planned_at)
+        values($1,$2,$3,$4,$5,$6,'normal',$7,'planned',$8,$8,now())`,
+        [req.body.customerId,ref,req.body.route||"",req.body.route||"",w,+req.body.pieces||1,price,r[0].id]);
+    }catch(orderErr){
+      console.warn("Auftrag+ order link:",String(orderErr));
+    }
+    await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0]);
+  }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht erstellt werden"})}
+});
 app.post("/api/trips/:id/stops",auth,roles("Admin","Dispatcher"),async(req,res)=>{const c=await q("select coalesce(max(stop_order),0)+1 n from trip_stops where trip_id=$1",[req.params.id]);const r=await q("insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time) values($1,$2,$3,$4,$5) returning *",[req.params.id,c[0].n,req.body.address,req.body.customerName,req.body.plannedTime||null]);res.json(r[0])});
 app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
