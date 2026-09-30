@@ -3808,6 +3808,9 @@ async function v87BuildDdtPdf(t,stops,ddt){
   doc.text(`Status: ${ddt.status||"—"}`,310,infoTop+46);
   doc.font("Helvetica-Bold").text("Kunde",60,infoTop+66);
   doc.font("Helvetica").text(t.customer_company||"—",110,infoTop+66,{width:420});
+  const deliveryAddress=stops[0]?.address||String(t.route||"").split(" → ")[1]||"—";
+  doc.font("Helvetica-Bold").text("Lieferadresse",60,infoTop+82);
+  doc.font("Helvetica").text(deliveryAddress,130,infoTop+82,{width:405,ellipsis:true});
   doc.y=infoTop+108;
 
   const tableTop=doc.y;
@@ -3844,6 +3847,10 @@ async function v87BuildDdtPdf(t,stops,ddt){
   doc.font("Helvetica-Bold").fontSize(10).text("Transportdaten",48,transportTop);
   doc.font("Helvetica").fontSize(9).text(`Fahrer: ${t.driver_name||"—"}`,48,transportTop+18);
   doc.text(`Fahrzeug: ${[t.vehicle_name,t.plate].filter(Boolean).join(" · ")||"—"}`,48,transportTop+34);
+  if(t.notes){
+    doc.font("Helvetica-Bold").fontSize(8).text("Notiz:",48,transportTop+50);
+    doc.font("Helvetica").fontSize(8).text(String(t.notes),78,transportTop+50,{width:210,height:18,ellipsis:true});
+  }
 
   // Digitale Kundenunterschrift: Die Unterschrift wird direkt auf dem Lieferschein
   // unter der Empfangsbestätigung ausgegeben, sofern der Fahrer sie erfasst hat.
