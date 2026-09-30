@@ -319,6 +319,16 @@ app.post("/api/documents/ddt-manual",auth,roles("Admin","Dispatcher","Accounting
       [n[0].n,b.customerId,weight,Math.max(1,Number(b.pieces)||1),b.driverId||null,b.vehicleId||null,route,b.notes||null]))[0];
     await q(`insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time)
       values($1,1,$2,$3,$4)`,[t.id,b.address,b.customerName||null,b.plannedTime||null]);
+    // Manual DDTs also get a linked Auftrag 360° record so address and note
+    // remain editable from the central order file.
+    try{
+      const ref="ORD-"+Date.now().toString(36).toUpperCase();
+      await q(`insert into orders(customer_id,reference,pickup_address,delivery_address,weight_kg,pieces,priority,price_net,status,planned_trip_id,planned_at,dispatch_note)
+        values($1,$2,$3,$4,$5,$6,'normal',0,'planned',$7,now(),$8)`,
+        [b.customerId,ref,b.pickupAddress||null,b.address,weight,Math.max(1,Number(b.pieces)||1),t.id,b.notes||null]);
+    }catch(orderErr){
+      console.warn("Manual DDT order link:",String(orderErr));
+    }
     const dn=await q(`select 'DDT-'||extract(year from current_date)::int||'-'||lpad(
       (coalesce(max(cast(split_part(document_number,'-',3) as int)),0)+1)::text,4,'0') n from delivery_documents`);
     const d=(await q(`insert into delivery_documents(trip_id,document_number,status,proof_complete)
