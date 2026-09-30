@@ -817,7 +817,7 @@ app.get("/api/documents/delivery-note/:id",auth,async(req,res)=>{
     <div class="grid"><div class="card"><small>CLIENTE</small><b>${t.company}</b><br>${t.address||''}<br>${t.city||''}<br>${t.vat_id||''}</div>
     <div class="card"><small>TOUR</small>${t.trip_number}<br>${Number(t.weight_kg||0).toFixed(1)} KG · ${t.pieces||0} Stk.<br>Status: ${t.status}</div></div>
     <table><tr><th>#</th><th>Destinazione</th><th>Status</th><th>Consegnato</th></tr>${rows}</table>
-    <p><b>Firma / Prova di consegna:</b> ${st.every(x=>x.signature_data||x.photo_data)?'presente':'da completare'}</p>`));
+    <div class="sign"><div><b>Firma mittente</b></div><div><b>Firma destinatario</b>${st.find(x=>x.signature_data)?.signature_data?'<br><img src="'+st.find(x=>x.signature_data).signature_data+'" style="max-width:260px;max-height:90px;margin-top:8px">':'<br><span>Keine digitale Unterschrift erfasst.</span>'}</div></div>`));
 });
 
 app.get("/api/permissions",auth,async(req,res)=>{
@@ -3867,9 +3867,12 @@ async function v87BuildDdtPdf(t,stops,ddt){
   const sigX=310, sigY=transportTop, sigW=237, sigH=58;
   doc.font("Helvetica-Bold").fontSize(9).fillColor("#172033").text("Empfangsbestätigung / Kundenunterschrift",sigX,sigY,{width:sigW});
   doc.rect(sigX,sigY+14,sigW,sigH-14).strokeColor("#d0d5dd").stroke();
-  if(t.signature_data){
+  const signedStop=(stops||[]).find(x=>x.signature_data)||null;
+  const signatureData=signedStop?.signature_data||t.signature_data||null;
+  const signatureAt=signedStop?.signature_at||t.signature_at||signedStop?.delivered_at||null;
+  if(signatureData){
     try{
-      const raw=String(t.signature_data);
+      const raw=String(signatureData);
       const base64=raw.includes(",")?raw.split(",").pop():raw;
       const sigBuf=Buffer.from(base64,"base64");
       doc.image(sigBuf,sigX+8,sigY+19,{fit:[sigW-16,35],align:"center",valign:"center"});
@@ -3879,8 +3882,8 @@ async function v87BuildDdtPdf(t,stops,ddt){
   }else{
     doc.font("Helvetica").fontSize(7).fillColor("#667085").text("Keine digitale Unterschrift erfasst.",sigX+8,sigY+34,{width:sigW-16,align:"center"});
   }
-  if(t.signature_at){
-    doc.font("Helvetica").fontSize(6.5).fillColor("#667085").text("Unterzeichnet am: "+new Date(t.signature_at).toLocaleString("de-DE"),sigX,sigY+74,{width:sigW,align:"center"});
+  if(signatureAt){
+    doc.font("Helvetica").fontSize(6.5).fillColor("#667085").text("Unterzeichnet am: "+new Date(signatureAt).toLocaleString("de-DE"),sigX,sigY+74,{width:sigW,align:"center"});
   }
 
   const footer=[company.company_name,company.legal_name,[company.address,company.postal_code,company.city].filter(Boolean).join(", "),company.vat_id?`P.IVA: ${company.vat_id}`:"",company.phone?`Tel. ${company.phone}`:"",company.email||"",company.footer_note||""];
