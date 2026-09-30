@@ -486,7 +486,7 @@ app.delete('/api/orders/:id', auth, roles('Admin','Dispatcher'), async (req,res)
     const tripId=o.planned_trip_id||o.assigned_trip_id;
     if(tripId){
       if(o.delivery_address) await q("delete from trip_stops where trip_id=$1 and address=$2",[tripId,o.delivery_address]);
-      await q("update trips set weight_kg=coalesce((select sum(weight_kg) from orders where planned_trip_id=$1 and id<>$2),0),price_net=coalesce((select sum(price_net) from orders where planned_trip_id=$1 and id<>$2),0),updated_at=now() where id=$1",[tripId,req.params.id]);
+      await q("update trips set weight_kg=coalesce((select sum(weight_kg) from orders where (planned_trip_id=$1 or assigned_trip_id=$1) and id<>$2),0),price_net=coalesce((select sum(price_net) from orders where (planned_trip_id=$1 or assigned_trip_id=$1) and id<>$2),0),updated_at=now() where id=$1",[tripId,req.params.id]);
     }
     await q("delete from orders where id=$1",[req.params.id]);
     await audit(req,"ORDER_DELETED",o.reference||req.params.id);
