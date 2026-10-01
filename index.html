@@ -458,14 +458,16 @@ async function saveCompanySettings(){
   if(!body.company_name)return alert("Firmenname ist erforderlich.");
   try{S.company=await api("/api/company-settings",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});alert("Firmendaten gespeichert.");view("company");}catch(e){alert(e.message)}
 }
-function downloadPdf(url,name){
-  fetch(url,{headers:{Authorization:"Bearer "+T}}).then(async r=>{
+async function downloadPdf(url,name){
+  try{
+    let r=await fetch(url,{headers:{Authorization:"Bearer "+T}});
+    if(r.status===401 && OT) r=await fetch(url,{headers:{Authorization:"Bearer "+OT}});
     if(!r.ok) throw new Error((await r.text())||"PDF konnte nicht erstellt werden");
     const blob=await r.blob();
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name+".pdf";
     document.body.appendChild(a); a.click();
     setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
-  }).catch(e=>alert(e.message));
+  }catch(e){alert(e.message)}
 }
 let edPdfPreviewUrl="";
 function closePdfPreview(){
@@ -475,11 +477,11 @@ function closePdfPreview(){
 }
 async function previewPdf(type,id){
   try{
-    // Electron's built-in PDF viewer can render a fetched blob as a white frame.
-    // Preview the authenticated HTML document instead; the PDF download remains
-    // the exact generated PDF.
+    // Preview uses the same online/offline token fallback as the API helper.
     const path=type==="invoice"?"/api/documents/invoice/":"/api/documents/delivery-note/";
-    const r=await fetch(path+encodeURIComponent(id),{headers:{Authorization:"Bearer "+T}});
+    const url=path+encodeURIComponent(id);
+    let r=await fetch(url,{headers:{Authorization:"Bearer "+T}});
+    if(r.status===401 && OT) r=await fetch(url,{headers:{Authorization:"Bearer "+OT}});
     if(!r.ok)throw new Error((await r.text())||"Vorschau konnte nicht geladen werden");
     const html=await r.text();
     if(edPdfPreviewUrl)URL.revokeObjectURL(edPdfPreviewUrl);
