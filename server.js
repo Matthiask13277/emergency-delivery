@@ -120,6 +120,37 @@ async function ensureV183Columns(){
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '{}'::jsonb`);
+  // Auftrag+/Auftrag 360 schema: keep the online database compatible with the current order creation flow.
+  await q(`CREATE TABLE IF NOT EXISTS orders(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), order_number text UNIQUE, reference text UNIQUE, title text,
+    customer_id uuid REFERENCES customers(id), pickup_address text, pickup_city text, delivery_address text, delivery_city text,
+    weight_kg numeric DEFAULT 0, pieces integer DEFAULT 1, customer_reference text, priority text DEFAULT 'normal',
+    requested_date date, time_window_start timestamptz, time_window_end timestamptz, estimated_service_min integer DEFAULT 15,
+    price_net numeric DEFAULT 0, status text DEFAULT 'new', planned_trip_id uuid REFERENCES trips(id) ON DELETE SET NULL,
+    planned_at timestamptz, dispatch_note text, dispatch_position integer, created_at timestamptz DEFAULT now()
+  )`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS order_number text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS reference text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS title text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_address text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_city text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_city text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS weight_kg numeric DEFAULT 0`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pieces integer DEFAULT 1`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_reference text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS requested_date date`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS time_window_start timestamptz`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS time_window_end timestamptz`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimated_service_min integer DEFAULT 15`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS price_net numeric DEFAULT 0`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS status text DEFAULT 'new'`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS planned_trip_id uuid REFERENCES trips(id) ON DELETE SET NULL`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS planned_at timestamptz`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_note text`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_position integer`);
+  await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
 }
 
 async function ensureCompanySettings(){
