@@ -1991,6 +1991,7 @@ app.get("/api/invoices/overview",auth,roles("Admin","Dispatcher","Accounting"),a
     res.json({rows,total,open,overdue});
   }catch(e){res.status(500).json({error:e.message})}
 });
+app.delete("/api/invoices/:id",auth,roles("Admin","Accounting"),async(req,res)=>{try{const r=await q("delete from invoices where id=$1 returning *",[req.params.id]);if(!r[0])return res.status(404).json({error:"Rechnung nicht gefunden"});await audit(req,"INVOICE_DELETED",r[0].invoice_number);res.json({ok:true});}catch(e){res.status(400).json({error:e.message||"Rechnung konnte nicht gelöscht werden"})}});
 app.post("/api/invoices/:id/pay",auth,roles("Admin","Accounting"),async(req,res)=>{
   try{const r=await q("update invoices set status='Paid',paid_at=now() where id=$1 returning *",[req.params.id]);if(!r[0])return res.status(404).json({error:"Rechnung nicht gefunden"});await audit(req,"INVOICE_PAID",r[0].invoice_number);res.json(r[0])}
   catch(e){res.status(500).json({error:e.message})}
