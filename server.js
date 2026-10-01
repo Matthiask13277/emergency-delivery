@@ -298,6 +298,42 @@ app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0]);
   }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht erstellt werden"})}
 });
+app.post("/api/tours/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+  try{
+    const ids=Array.isArray(req.body?.tripIds)?req.body.tripIds.filter(Boolean):[];
+    if(!ids.length)return res.status(400).json({error:"Bitte mindestens einen Auftrag auswählen."});
+    const driverId=req.body.driverId||null, vehicleId=req.body.vehicleId||null;
+    const origin=String(req.body.origin||"").trim(), destination=String(req.body.destination||"").trim();
+    const name=String(req.body.name||"").trim()||("Tour "+new Date().toLocaleDateString("de-DE"));
+    const rows=await q(`select t.id,t.trip_number,t.customer_id,t.weight_kg,t.pieces,t.price_net,t.route,t.driver_id,t.vehicle_id,
+      c.company,c.address customer_address,c.city customer_city,
+      coalesce(s.address,c.address) stop_address,coalesce(s.customer_name,c.company) stop_customer,
+      coalesce(s.planned_time,null) stop_time
+      from trips t left join customers c on c.id=t.customer_id
+      left join lateral (select address,customer_name,planned_time from trip_stops where trip_id=t.id order by coalesce(dispatch_position,stop_order),stop_order,id limit 1) s on true
+      where t.id=any($1::uuid[]) order by array_position($1::uuid[],t.id)`,[ids]);
+    if(rows.length!==ids.length)return res.status(400).json({error:"Mindestens ein ausgewählter Auftrag wurde nicht gefunden."});
+    const totalWeight=rows.reduce((n,x)=>n+Number(x.weight_kg||0),0);
+    if(totalWeight>1000)return res.status(400).json({error:"Die Tour überschreitet 1.000 KG."});
+    const totalPieces=rows.reduce((n,x)=>n+Number(x.pieces||1),0);
+    const totalPrice=rows.reduce((n,x)=>n+Number(x.price_net||0),0);
+    const first=rows[0];
+    const route=[origin,destination].filter(Boolean).join(" → ")||rows.map(x=>x.stop_city||x.customer_city).filter(Boolean).join(" → ");
+    const n=await q("select 'TOUR-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(trip_number,'-',3) as int)),0)+1)::text,4,'0') n from trips where trip_number like 'TOUR-%'");
+    const tour=(await q(`insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net)
+      values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9) returning *`,
+      [n[0].n,first.customer_id,totalWeight,totalPieces,driverId,vehicleId,route,name,totalPrice]))[0];
+    for(let i=0;i<rows.length;i++){
+      const x=rows[i];
+      const address=x.stop_address||x.customer_address||x.route||"";
+      await q(`insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time,dispatch_position)
+        values($1,$2,$3,$4,$5,$6)`,[tour.id,i+1,address,x.stop_customer||"",x.stop_time||null,i+1]);
+    }
+    await q("update orders set planned_trip_id=$1,planned_at=now(),status='planned',dispatch_position=null where planned_trip_id=any($2::uuid[])",[tour.id,ids]);
+    await audit(req,"TOUR_CREATED",tour.trip_number+" · "+name+" · "+ids.length+" Aufträge");
+    res.status(201).json({...tour,tour_name:name,stop_count:rows.length});
+  }catch(e){res.status(400).json({error:e.message||"Tour konnte nicht erstellt werden"})}
+});
 app.post("/api/trips/:id/stops",auth,roles("Admin","Dispatcher"),async(req,res)=>{const c=await q("select coalesce(max(stop_order),0)+1 n from trip_stops where trip_id=$1",[req.params.id]);const r=await q("insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time) values($1,$2,$3,$4,$5) returning *",[req.params.id,c[0].n,req.body.address,req.body.customerName,req.body.plannedTime||null]);res.json(r[0])});
 app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
