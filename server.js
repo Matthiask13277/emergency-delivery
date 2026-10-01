@@ -2577,6 +2577,39 @@ app.get("/api/orders",auth,roles("Admin","Dispatcher","Accounting"),async(req,re
     order by o.created_at desc limit 200`))}
   catch(e){res.status(500).json({error:e.message})}
 });
+app.get("/api/orders/:id/360",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  try{
+    const o=(await q(`select o.*,c.company customer_company,c.address customer_address,c.city customer_city,c.email customer_email,c.phone customer_phone
+      from orders o left join customers c on c.id=o.customer_id where o.id=$1`,[req.params.id]))[0];
+    if(!o)return res.status(404).json({error:"Auftrag nicht gefunden"});
+    const t=(await q(`select t.*,u.name driver_name,v.name vehicle_name,v.plate vehicle_plate
+      from trips t left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id
+      where t.id=$1`,[o.planned_trip_id]))[0]||null;
+    const stops=t?await q("select * from trip_stops where trip_id=$1 order by coalesce(planned_sequence,stop_order),stop_order,id",[t.id]):[];
+    const invoices=await q("select * from invoices where customer_id=$1 order by issue_date desc limit 100",[o.customer_id]);
+    res.json({order:o,trip:t,stops,invoices});
+  }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht geladen werden"})}
+});
+app.patch("/api/orders/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  try{
+    const allowed=["reference","customer_id","pickup_address","pickup_city","delivery_address","delivery_city","weight_kg","pieces","customer_reference","priority","requested_date","time_window_start","time_window_end","estimated_service_min","price_net","status","dispatch_note"];
+    const keys=Object.keys(req.body||{}).filter(k=>allowed.includes(k));
+    if(!keys.length)return res.status(400).json({error:"Keine gültigen Felder"});
+    if(keys.includes("weight_kg")&&Number(req.body.weight_kg)>1000)return res.status(400).json({error:"Maximal 1.000 KG"});
+    const vals=keys.map(k=>req.body[k]); vals.push(req.params.id);
+    const set=keys.map((k,i)=>`${k}=${i+1}`).join(",");
+    const r=(await q(`update orders set ${set} where id=${vals.length} returning *`,vals))[0];
+    if(!r)return res.status(404).json({error:"Auftrag nicht gefunden"});
+    await audit(req,"ORDER_UPDATED",r.reference||r.order_number||r.id);res.json(r);
+  }catch(e){res.status(400).json({error:e.message||"Auftrag konnte nicht gespeichert werden"})}
+});
+app.delete("/api/orders/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  try{
+    const r=(await q("delete from orders where id=$1 returning id,reference,order_number",[req.params.id]))[0];
+    if(!r)return res.status(404).json({error:"Auftrag nicht gefunden"});
+    await audit(req,"ORDER_DELETED",r.reference||r.order_number||r.id);res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message||"Auftrag konnte nicht gelöscht werden"})}
+});
 app.post("/api/orders/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const kg=Math.max(0,Number(req.body.weight_kg||0)); if(kg>1000)return res.status(400).json({error:"Maximal 1000 KG"});
