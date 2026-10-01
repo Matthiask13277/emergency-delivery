@@ -257,7 +257,23 @@ app.post("/api/me/password",auth,async(req,res)=>{
   try{const current=String(req.body.currentPassword||""),next=String(req.body.newPassword||"");if(next.length<8)return res.status(400).json({error:"Das neue Passwort muss mindestens 8 Zeichen haben"});const u=(await q("select username,password_hash from users where id=$1",[req.user.id]))[0];if(!u||!(await bcrypt.compare(current,u.password_hash)))return res.status(400).json({error:"Aktuelles Passwort ist falsch"});if(current===next)return res.status(400).json({error:"Das neue Passwort muss sich vom alten unterscheiden"});const hash=await bcrypt.hash(next,12);await q("update users set password_hash=$2,must_change_password=false where id=$1",[req.user.id,hash]);await audit(req,"SELF_PASSWORD_CHANGED",u.username);res.json({ok:true})}catch(e){res.status(500).json({error:e.message})}
 });
 
-app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
+async function ensureDeliveryDocuments(){
+  await q(`CREATE TABLE IF NOT EXISTS delivery_documents(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id uuid UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+    document_number text UNIQUE NOT NULL,
+    issued_at timestamptz DEFAULT now(),
+    status text DEFAULT 'Open',
+    proof_complete boolean DEFAULT false,
+    pdf_html text
+  )`);
+  await q(`ALTER TABLE delivery_documents ADD COLUMN IF NOT EXISTS pdf_html text`);
+  const trips=await q("select id from trips order by created_at asc");
+  for(const t of trips){
+    try{await createDdt37({user:{id:null,name:"System",role:"Admin"}},t.id)}catch(e){console.warn("DDT backfill:",t.id,String(e.message||e))}
+  }
+}
+app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
 q("select id,name,role from users order by name"),q("select * from customers order by company"),q("select * from trips order by created_at desc"),q("select * from vehicles order by name"),
 q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
 res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
@@ -330,6 +346,7 @@ app.post("/api/tours/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
         values($1,$2,$3,$4,$5,$6)`,[tour.id,i+1,address,x.stop_customer||"",x.stop_time||null,i+1]);
     }
     await q("update orders set planned_trip_id=$1,planned_at=now(),status='planned',dispatch_position=null where planned_trip_id=any($2::uuid[])",[tour.id,ids]);
+    try{await createDdt37(req,tour.id)}catch(e){console.warn("Tour DDT auto-create failed:",e.message)}
     await audit(req,"TOUR_CREATED",tour.trip_number+" · "+name+" · "+ids.length+" Aufträge");
     res.status(201).json({...tour,tour_name:name,stop_count:rows.length});
   }catch(e){res.status(400).json({error:e.message||"Tour konnte nicht erstellt werden"})}
