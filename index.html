@@ -885,13 +885,15 @@ if ("serviceWorker" in navigator) {
 
 <script id="emergency-mobile-v210-js">
 (function(){
-  function findMenu(label){
-    const els=[...document.querySelectorAll("button,a")];
-    return els.find(x=>((x.textContent||"").trim()).toLowerCase()===label.toLowerCase());
-  }
   function go(label){
-    const el=findMenu(label);
-    if(el) el.click();
+    const routes={
+      "Dashboard":"dashboard",
+      "Auftrag+":"auftragplus",
+      "Kalender":"calendar",
+      "Mein Konto":"account"
+    };
+    const page=routes[label];
+    if(page && typeof window.view==="function") window.view(page);
   }
   function addNav(){
     if(document.getElementById("edMobileNav")) return;
