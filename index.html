@@ -313,7 +313,7 @@ if(p==="driver"){
       (stops.map((s,i)=>
         '<div class="panel"><b>'+(i+1)+'. '+esc(s.customer_name||"Lieferung")+
         '</b><div class="muted">'+esc(s.address||"")+
-        '</div><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180" style="touch-action:none;cursor:crosshair"></canvas><br>'+
+        '</div><div class="row"><button class="btn secondary" data-stop-action="arrived" data-stop-id="'+s.id+'">Angefahren</button><button class="btn secondary" data-stop-action="delivered" data-stop-id="'+s.id+'">Zugestellt</button><button class="btn secondary" data-stop-action="navstop" data-address="'+esc(s.address||"")+'">Navigation</button></div><label class="btn secondary" style="display:inline-block;margin-top:8px">Lieferfoto<input type="file" accept="image/*" capture="environment" data-photo-stop="'+s.id+'" style="display:none"></label><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180" style="touch-action:none;cursor:crosshair"></canvas><br>'+
         '<button class="btn" data-signature-id="'+s.id+'">Unterschrift auf Lieferschein speichern</button></div>'
       ).join("") || "<p class='muted'>Keine Stopps vorhanden.</p>");
     return '<div class="panel"><b>'+esc(t.trip_number||"")+'</b> · '+esc(t.route||"")+
@@ -335,6 +335,9 @@ if(p==="driver"){
     if(action==="nav")btn.addEventListener("click",()=>nav(btn.dataset.route||""));
   });
   c.querySelectorAll("[data-signature-id]").forEach(btn=>btn.addEventListener("click",()=>saveStopSignature(btn.dataset.signatureId)));
+  c.querySelectorAll("[data-stop-action]").forEach(btn=>btn.addEventListener("click",async()=>{try{const r=await api("/api/stops/"+btn.dataset.stopId,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:btn.dataset.stopAction==="delivered"?"Delivered":"Arrived"})});const st=(S.stops||[]).find(x=>String(x.id)===String(btn.dataset.stopId));if(st)Object.assign(st,r);view("driver")}catch(e){alert(e.message||"Status konnte nicht gespeichert werden.")}}));
+  c.querySelectorAll("[data-stop-action='navstop']").forEach(btn=>btn.addEventListener("click",()=>nav(btn.dataset.address||"")));
+  c.querySelectorAll("[data-photo-stop]").forEach(inp=>inp.addEventListener("change",async()=>{const f=inp.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=async()=>{try{const stop=(S.stops||[]).find(x=>String(x.id)===String(inp.dataset.photoStop));if(!stop)throw new Error("Stop nicht gefunden");await api("/api/trips/"+stop.trip_id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({delivery_photo:reader.result})});alert("Lieferfoto gespeichert.");}catch(e){alert(e.message||"Lieferfoto konnte nicht gespeichert werden.")}};reader.readAsDataURL(f)}));
   m.filter(t=>t.status==="Delivered").forEach(t=>(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).forEach(s=>canvasStop(s.id,s.signature_data)));
 }
 if(p==="customers"){
