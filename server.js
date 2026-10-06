@@ -94,6 +94,7 @@ app.get("/assets/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(
 app.use(desktopCloudProxy);
 
 async function ensureV183Columns(){
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km numeric DEFAULT 0`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_name text`);
@@ -314,12 +315,13 @@ app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0]);
   }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht erstellt werden"})}
 });
-app.post("/api/tours/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+app.post("/api/tours/create",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     const ids=Array.isArray(req.body?.tripIds)?req.body.tripIds.filter(Boolean):[];
     if(!ids.length)return res.status(400).json({error:"Bitte mindestens einen Auftrag auswählen."});
     const driverId=req.body.driverId||null, vehicleId=req.body.vehicleId||null;
     const origin=String(req.body.origin||"").trim(), destination=String(req.body.destination||"").trim();
+    const distanceKm=Math.max(0,Number(req.body.distanceKm||0));
     const name=String(req.body.name||"").trim()||("Tour "+new Date().toLocaleDateString("de-DE"));
     const rows=await q(`select t.id,t.trip_number,t.customer_id,t.weight_kg,t.pieces,t.price_net,t.route,t.driver_id,t.vehicle_id,
       c.company,c.address customer_address,c.city customer_city,
@@ -336,9 +338,9 @@ app.post("/api/tours/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     const first=rows[0];
     const route=[origin,destination].filter(Boolean).join(" → ")||rows.map(x=>x.stop_city||x.customer_city).filter(Boolean).join(" → ");
     const n=await q("select 'TOUR-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(trip_number,'-',3) as int)),0)+1)::text,4,'0') n from trips where trip_number like 'TOUR-%'");
-    const tour=(await q(`insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net)
-      values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9) returning *`,
-      [n[0].n,first.customer_id,totalWeight,totalPieces,driverId,vehicleId,route,name,totalPrice]))[0];
+    const tour=(await q(`insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net,distance_km)
+      values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9,$10) returning *`,
+      [n[0].n,first.customer_id,totalWeight,totalPieces,driverId,vehicleId,route,name,totalPrice,distanceKm]))[0];
     for(let i=0;i<rows.length;i++){
       const x=rows[i];
       const address=x.stop_address||x.customer_address||x.route||"";
@@ -352,7 +354,7 @@ app.post("/api/tours/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   }catch(e){res.status(400).json({error:e.message||"Tour konnte nicht erstellt werden"})}
 });
 app.post("/api/trips/:id/stops",auth,roles("Admin","Dispatcher"),async(req,res)=>{const c=await q("select coalesce(max(stop_order),0)+1 n from trip_stops where trip_id=$1",[req.params.id]);const r=await q("insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time) values($1,$2,$3,$4,$5) returning *",[req.params.id,c[0].n,req.body.address,req.body.customerName,req.body.plannedTime||null]);res.json(r[0])});
-app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher"),async(req,res)=>{
+app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     const ids=Array.isArray(req.body.tripIds)?req.body.tripIds:[];
     if(!ids.length)return res.status(400).json({error:"Keine Aufträge ausgewählt"});
