@@ -741,7 +741,15 @@ async function saveVehicle(id){
  if(!body.name||!body.plate)return alert("Name und Kennzeichen sind erforderlich.");
  try{await api(id?"/api/vehicles/"+id:"/api/vehicles",{method:id?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});closeModal();await refreshState();view("vehicles")}catch(e){alert(e.message)}
 }
-async function deleteVehicle(id){if(!confirm("Fahrzeug wirklich löschen?"))return;try{await api("/api/vehicles/"+id,{method:"DELETE"});await refreshState();view("vehicles")}catch(e){alert(e.message)}}
+async function deleteVehicle(id){
+ const v=(S.vehicles||[]).find(x=>String(x.id)===String(id));
+ if(!v)return;
+ if(!confirm("Fahrzeug "+(v.name||"")+" wirklich löschen?\n\nWenn es bereits in Touren verwendet wurde, wird es aus Sicherheitsgründen deaktiviert statt aus der Historie gelöscht."))return;
+ try{
+   const r=await api("/api/vehicles/"+encodeURIComponent(id),{method:"DELETE"});
+   await refreshState(); view("vehicles");
+   if(r?.deactivated)alert("Fahrzeug wurde deaktiviert, damit die bisherigen Touren und Lieferscheine erhalten bleiben.");
+ }catch(e){alert(e.message||"Fahrzeug konnte nicht gelöscht werden.")}}
 async function deleteTrip(id){
  const t=S.trips.find(x=>x.id===id)||{};
  if(!confirm("Auftrag "+(t.trip_number||"")+" wirklich löschen?\n\nDer Auftrag und zugehörige Lieferschein/Stopps werden entfernt. Rechnungsbelegte Aufträge können nicht gelöscht werden."))return;
