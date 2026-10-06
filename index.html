@@ -913,7 +913,5 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load",()=>obs.observe(document.body,{childList:true,subtree:true}));
 })();
 </script>
-<script src="/sync.js">function calculateCosts(){const g=id=>Number(document.getElementById(id).value||0),km=g("ccKm"),fuel=km*g("ccConsumption")/100*g("ccFuelPrice"),total=fuel+g("ccDriver")+g("ccToll")+g("ccVehicle")+g("ccFixed"),margin=g("ccRevenue")-total;document.getElementById("ccResult").innerHTML="<b>Gesamtkosten: € "+total.toFixed(2)+"</b><br>Kraftstoff: € "+fuel.toFixed(2)+"<br>Kosten/km: € "+(km?total/km:0).toFixed(2)+"<br>Marge: € "+margin.toFixed(2)}
-function loadTourKm(){const s=document.getElementById("ccTour"),t=S.trips.find(x=>String(x.id)===String(s.value));if(t)document.getElementById("ccKm").value=Number(t.distance_km||0)}
-</script>
+<script>function calculateCosts(){const g=id=>Number(document.getElementById(id)?.value||0),km=Math.max(0,g("ccKm")),fuel=km*g("ccConsumption")/100*g("ccFuelPrice"),total=fuel+g("ccDriver")+g("ccToll")+g("ccVehicle")+g("ccFixed"),revenue=g("ccRevenue"),margin=revenue-total;document.getElementById("ccResult").innerHTML="<b>Gesamtkosten: € "+total.toFixed(2)+"</b><br>Kraftstoff: € "+fuel.toFixed(2)+"<br>Kosten/km: € "+(km?total/km:0).toFixed(2)+"<br>Marge: € "+margin.toFixed(2)} function loadTourKm(){const s=document.getElementById("ccTour"),t=(window.S?.trips||[]).find(x=>String(x.id)===String(s?.value));if(t&&document.getElementById("ccKm"))document.getElementById("ccKm").value=Number(t.distance_km||0)}</script><script src="/sync.js"></script>
 </body></html>
