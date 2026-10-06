@@ -2422,10 +2422,15 @@ app.post("/api/vehicles",auth,roles("Admin"),async(req,res)=>{
 app.delete("/api/vehicles/:id",auth,roles("Admin"),async(req,res)=>{
   try{
     const used=await q("select count(*)::int n from trips where vehicle_id=$1",[req.params.id]);
-    if(Number(used[0]?.n||0)>0)return res.status(409).json({error:"Fahrzeug kann nicht gelöscht werden, weil bereits Touren zugeordnet sind. Bitte deaktivieren."});
+    if(Number(used[0]?.n||0)>0){
+      const r=await q("update vehicles set active=false where id=$1 returning id,name",[req.params.id]);
+      if(!r.length)return res.status(404).json({error:"Fahrzeug nicht gefunden"});
+      await audit(req,"VEHICLE_DEACTIVATED",r[0].name);
+      return res.json({ok:true,deactivated:true,name:r[0].name});
+    }
     const r=await q("delete from vehicles where id=$1 returning id,name",[req.params.id]);
     if(!r.length)return res.status(404).json({error:"Fahrzeug nicht gefunden"});
-    await audit(req,"VEHICLE_DELETED",r[0].name);res.json({ok:true});
+    await audit(req,"VEHICLE_DELETED",r[0].name);res.json({ok:true,deactivated:false});
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.post("/api/vehicles/:id/maintenance",auth,roles("Admin","Dispatcher"),async(req,res)=>{
