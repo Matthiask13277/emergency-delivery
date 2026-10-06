@@ -713,19 +713,23 @@ app.get('/api/dispatch/board', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.patch('/api/trips/:id/dispatch', auth, async (req,res) => {
+app.patch('/api/trips/:id/dispatch', auth, roles("Admin","Dispatcher","Accounting"), async (req,res) => {
   try {
+    const t=(await q("select * from trips where id=$1",[req.params.id]))[0];
+    if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
     const { driver_id=null, vehicle_id=null, status=null, priority=null, planned_start_at=null, board_note=null } = req.body;
     const { rows } = await pool.query(`
       UPDATE trips SET
-        driver_id=COALESCE($1,driver_id),
-        vehicle_id=COALESCE($2,vehicle_id),
+        driver_id=$1,
+        vehicle_id=$2,
         status=COALESCE($3,status),
         priority=COALESCE($4,priority),
         planned_start_at=COALESCE($5,planned_start_at),
-        board_note=COALESCE($6,board_note)
+        board_note=COALESCE($6,board_note),
+        updated_at=NOW()
       WHERE id=$7 RETURNING *
-    `,[driver_id,vehicle_id,status,priority,planned_start_at,board_note,req.params.id]);
+    `,[driver_id||null,vehicle_id||null,status,priority,planned_start_at,board_note,req.params.id]);
+    await audit(req,"TRIP_ASSIGNMENT",rows[0].trip_number);
     res.json(rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
