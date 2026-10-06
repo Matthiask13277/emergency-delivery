@@ -353,7 +353,7 @@ if(p==="customer360"){c.innerHTML=`<div class="page-head"><div><div class="eyebr
 if(p==="notifications")c.innerHTML=`<div class="panel"><h2>Benachrichtigungen</h2><p class="muted">Aktuelle System- und Betriebsereignisse.</p></div>`;
 if(p==="communication")c.innerHTML=`<div class="panel"><h2>Kommunikation</h2><p class="muted">Kundenkommunikation und Vorlagen.</p></div>`;
 if(p==="documents")c.innerHTML=`<div class="page-head"><div><div class="eyebrow">LIEFERSCHEINE</div><h2>Lieferscheine & Rechnungen</h2><p class="muted">Lieferscheine erstellen, bearbeiten und als PDF herunterladen.</p></div><button class="btn primary" onclick="openDdt()">+ Lieferschein erstellen</button></div><div class="panel"><h3>Lieferscheine</h3><div class="list">${(S.ddts||[]).map(d=>{const t=S.trips.find(x=>String(x.id)===String(d.trip_id))||{};return `<div class="listRow"><div><b>${esc(d.document_number||t.trip_number||"DDT")}</b><div class="muted">${esc(d.customer_company||((S.customers.find(c=>c.id===t.customer_id)||{}).company||""))} · ${esc(t.status||d.status||"")}</div><div class="muted">${esc((S.stops||[]).find(s=>String(s.trip_id)===String(t.id))?.address||"Keine Lieferadresse")} · ${esc(t.notes||"Keine Notiz")}</div></div><div class="row"><button class="btn secondary" onclick="editDdt('${t.id}')">Bearbeiten</button><button class="btn secondary" onclick="previewPdf('ddt','${t.id}')">PDF Vorschau</button><button class="btn secondary" onclick="ddt('${t.id}')">Lieferschein PDF</button></div></div>`}).join("")||"<p class='muted'>Keine Lieferscheine vorhanden.</p>"}</div><h3>Rechnungen</h3><div class="list">${S.invoices.map(i=>`<div class="listRow"><div><b>${i.invoice_number}</b><div class="muted">${i.status}</div></div><div class="row"><button class="btn secondary" onclick="editInvoice('${i.id}')">Bearbeiten</button><button class="btn secondary" onclick="previewPdf('invoice','${i.id}')">PDF Vorschau</button><button class="btn secondary" onclick="inv('${i.id}')">Rechnung PDF</button></div></div>`).join("")||"<p class='muted'>Keine Rechnungen vorhanden.</p>"}</div></div>`;
-if(p==="portal")c.innerHTML=`<div class="panel"><h2>Kundenportal</h2><p class="muted">Kundenportal und Sendungsverfolgung.</p></div>`;
+if(p==="portal"){c.innerHTML='<div class="page-head"><div><div class="eyebrow">KUNDEN</div><h2>Kundenportal</h2><p class="muted">Kundenübersicht mit Aufträgen, Touren, Lieferscheinen und Rechnungsstatus.</p></div></div><div class="panel"><label>Kunde<select id="portalCustomer" onchange="loadCustomerPortal()"><option value="">Kunde auswählen</option>'+S.customers.map(x=>'<option value="'+x.id+'">'+esc(x.company)+'</option>').join("")+'</select></label></div><div id="portalContent" class="grid2"><div class="panel"><p class="muted">Bitte einen Kunden auswählen.</p></div></div>';}
 if(p==="operations")renderOperationsBoard();
 if(p==="employees"){
   c.innerHTML=`<div class="page-head"><div><div class="eyebrow">STAMMDATEN</div><h2>Mitarbeiterdatei</h2><p class="muted">Fahrer und Mitarbeiter mit Kontaktdaten, Führerschein, Eintritt und Fahrzeugzuordnung.</p></div><button class="btn primary" onclick="loadEmployeeVehicles().then(()=>openEmployee())">+ Mitarbeiter hinzufügen</button></div><div class="panel employee-panel"><div id="employeeList">Lade Mitarbeiter…</div></div>`;
@@ -562,6 +562,20 @@ async function saveTripAssignment(id){
     const t=(S.trips||[]).find(x=>String(x.id)===String(id)); if(t)Object.assign(t,r);
     closeModal(); view("dispatch"); alert("Fahrer und Fahrzeug wurden zugewiesen.");
   }catch(e){alert(e.message||"Zuweisung konnte nicht gespeichert werden.")}
+}
+async function loadCustomerPortal(){
+  const id=document.getElementById("portalCustomer")?.value,box=document.getElementById("portalContent");
+  if(!box)return;
+  if(!id){box.innerHTML='<div class="panel"><p class="muted">Bitte einen Kunden auswählen.</p></div>';return}
+  try{
+    const customer=(S.customers||[]).find(x=>String(x.id)===String(id));
+    const trips=(S.trips||[]).filter(x=>String(x.customer_id)===String(id));
+    const invs=(S.invoices||[]).filter(x=>String(x.customer_id)===String(id));
+    const open=invs.filter(x=>String(x.status).toLowerCase()==="open"),paid=invs.filter(x=>String(x.status).toLowerCase()==="paid");
+    box.innerHTML='<div class="panel"><h3>'+esc(customer?.company||"Kunde")+'</h3><p class="muted">'+esc(customer?.address||"")+' '+esc(customer?.city||"")+'</p><div class="grid"><div class="stat"><span>Aufträge/Touren</span><b>'+trips.length+'</b></div><div class="stat"><span>Offene Rechnungen</span><b>'+open.length+'</b></div><div class="stat"><span>Bezahlt</span><b>'+paid.length+'</b></div></div></div>'+
+    '<div class="panel"><h3>Aufträge & Touren</h3><table><tr><th>Fahrt</th><th>Route</th><th>Status</th><th>KG</th><th>Preis</th><th>Lieferschein</th></tr>'+trips.map(t=>'<tr><td>'+esc(t.trip_number||"")+'</td><td>'+esc(t.route||"")+'</td><td>'+esc(t.status||"")+'</td><td>'+Number(t.weight_kg||0)+' KG</td><td>€ '+Number(t.price_net||0).toFixed(2)+'</td><td><button class="btn secondary" onclick="previewPdf(\'ddt\',\''+t.id+'\')">Vorschau</button></td></tr>').join("")+'</table></div>'+
+    '<div class="panel"><h3>Rechnungen</h3><table><tr><th>Nr.</th><th>Status</th><th>Netto</th><th>Brutto</th><th>PDF</th></tr>'+invs.map(i=>'<tr><td>'+esc(i.invoice_number||"")+'</td><td>'+esc(i.status||"")+'</td><td>€ '+Number(i.net||0).toFixed(2)+'</td><td>€ '+Number(i.gross||0).toFixed(2)+'</td><td><button class="btn secondary" onclick="inv(\''+i.id+'\')">PDF</button></td></tr>').join("")+'</table></div>';
+  }catch(e){box.innerHTML='<div class="panel"><div class="error">'+esc(e.message||"Kundenportal konnte nicht geladen werden.")+'</div></div>'}
 }
 function editInvoice(id){
   const i=S.invoices.find(x=>x.id===id); if(!i)return;
