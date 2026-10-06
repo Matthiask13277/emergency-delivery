@@ -503,9 +503,14 @@ app.get("/api/trips/:id/stops",auth,async(req,res)=>{
 });
 
 app.patch("/api/stops/:id",auth,async(req,res)=>{
-  const r=await q("UPDATE trip_stops SET status=COALESCE($1,status), arrived_at=CASE WHEN $1='Arrived' THEN NOW() ELSE arrived_at END, delivered_at=CASE WHEN $1='Delivered' THEN NOW() ELSE delivered_at END, notes=COALESCE($2,notes) WHERE id=$3 RETURNING *",
-    [req.body.status,req.body.notes||null,req.params.id]);
-  res.json(r[0]);
+  try{
+    const s=(await q("select ts.id,t.driver_id from trip_stops ts join trips t on t.id=ts.trip_id where ts.id=$1",[req.params.id]))[0];
+    if(!s)return res.status(404).json({error:"Stop nicht gefunden"});
+    if(req.user.role==="Driver"&&s.driver_id!==req.user.id)return res.status(403).json({error:"Keine Berechtigung für diesen Stop"});
+    const r=await q("UPDATE trip_stops SET status=COALESCE($1,status), arrived_at=CASE WHEN $1='Arrived' THEN NOW() ELSE arrived_at END, delivered_at=CASE WHEN $1='Delivered' THEN NOW() ELSE delivered_at END, notes=COALESCE($2,notes) WHERE id=$3 RETURNING *",
+      [req.body.status,req.body.notes||null,req.params.id]);
+    res.json(r[0]);
+  }catch(e){res.status(500).json({error:e.message||"Stop konnte nicht aktualisiert werden"})}
 });
 app.post("/api/sync",auth,async(req,res)=>{
   const results=[];
