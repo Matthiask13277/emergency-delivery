@@ -307,7 +307,8 @@ if(contentPage==="dispatch"&&S.user.role==="Driver"){c.querySelectorAll(".panel"
 if(p==="vehicles"){c.innerHTML=`<div class="page-head"><div><div class="eyebrow">FUHRPARK</div><h2>Fahrzeuge</h2><p class="muted">Fahrzeuge anlegen, bearbeiten und erweitern.</p></div><button class="btn primary" onclick="openVehicle()">+ Fahrzeug hinzufügen</button></div><div class="grid">${S.vehicles.map(v=>`<div class="stat"><span>${esc(v.name)}</span><b>${esc(v.plate)}</b><div class="muted">${esc(v.make||"")} ${esc(v.model||"")} · ${v.active===false?"Inaktiv":"Aktiv"}</div><div class="row" style="margin-top:10px"><button class="btn secondary" onclick="openVehicle('${v.id}')">Bearbeiten</button><button class="btn secondary" onclick="deleteVehicle('${v.id}')">Löschen</button></div></div>`).join("")}</div>`;}
 if(p==="live")c.innerHTML=`<div class="panel"><h2>Live-Fahrzeuge</h2><p class="muted">Positionen werden automatisch alle 10 Sekunden aktualisiert.</p><div class="live" id="livebox"></div></div>`; if(p==="live"){live();setInterval(live,10000)}
 if(p==="driver"){
-  const m=S.trips.filter(t=>t.driver_id===S.user.id);
+  document.body.classList.add("driver-mode");
+  const m=S.trips.filter(t=>String(t.driver_id)===String(S.user.id));
   const cards=m.map(t=>{
     const stops=(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).sort((a,b)=>Number(a.stop_order||0)-Number(b.stop_order||0));
     const signatureHtml='<h4>Kundenunterschrift auf dem Lieferschein</h4>'+
