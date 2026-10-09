@@ -1,14 +1,14 @@
 {
   "name": "Emergency Delivery",
-  "short_name": "Emergency Delivery",
-  "description": "Mobile Transportverwaltung für Emergency Delivery",
+  "short_name": "Emergency",
+  "description": "Emergency Delivery – Verwaltung und Fahrer-App",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#f4f6f8",
   "theme_color": "#172033",
-  "lang": "de-DE",
+  "lang": "de",
   "categories": [
     "business",
     "productivity"
@@ -18,13 +18,13 @@
       "src": "/emergency-delivery-logo.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/emergency-delivery-logo.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
