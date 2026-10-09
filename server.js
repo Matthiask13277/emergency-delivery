@@ -91,6 +91,9 @@ async function desktopCloudProxy(req,res,next){
 
 app.get("/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(__dirname,"emergency-delivery-logo.png")));
 app.get("/assets/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(__dirname,"emergency-delivery-logo.png")));
+// Explicitly serve PWA files; the hosting runtime does not expose root files automatically.
+app.get("/manifest.json",(req,res)=>{res.setHeader("Content-Type","application/manifest+json; charset=utf-8");res.setHeader("Cache-Control","no-cache");res.sendFile(path.join(__dirname,"manifest.json"));});
+app.get("/service-worker.js",(req,res)=>{res.setHeader("Content-Type","application/javascript; charset=utf-8");res.setHeader("Service-Worker-Allowed","/");res.setHeader("Cache-Control","no-cache");res.sendFile(path.join(__dirname,"service-worker.js"));});
 app.use(desktopCloudProxy);
 
 async function ensureV183Columns(){
