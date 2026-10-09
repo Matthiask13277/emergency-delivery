@@ -1,10 +1,10 @@
 
-const CACHE = "emergency-delivery-mobile-v220";
+const CACHE = "emergency-delivery-mobile-v221";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/sync.js",
-  "/manifest.webmanifest",
+  "/manifest.json",
   "/service-worker.js",
   "/emergency-delivery-logo.png"
 ];
