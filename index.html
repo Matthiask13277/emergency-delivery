@@ -962,4 +962,38 @@ if ("serviceWorker" in navigator) {
 })();
 </script>
 <script>function calculateCosts(){const g=id=>Number(document.getElementById(id)?.value||0),km=Math.max(0,g("ccKm")),fuel=km*g("ccConsumption")/100*g("ccFuelPrice"),total=fuel+g("ccDriver")+g("ccToll")+g("ccVehicle")+g("ccFixed"),revenue=g("ccRevenue"),margin=revenue-total;document.getElementById("ccResult").innerHTML="<b>Gesamtkosten: € "+total.toFixed(2)+"</b><br>Kraftstoff: € "+fuel.toFixed(2)+"<br>Kosten/km: € "+(km?total/km:0).toFixed(2)+"<br>Marge: € "+margin.toFixed(2)} function loadTourKm(){const s=document.getElementById("ccTour"),t=(window.S?.trips||[]).find(x=>String(x.id)===String(s?.value));if(t&&document.getElementById("ccKm"))document.getElementById("ccKm").value=Number(t.distance_km||0)}</script><script src="/sync.js"></script>
-</body></html>
+<script id="ed-pwa-install">
+(()=> {
+ let deferredPrompt=null;
+ const isIOS=()=>/iphone|ipad|ipod/i.test(navigator.userAgent);
+ function installButton(){
+   if(document.getElementById("ed-install-app")) return;
+   const b=document.createElement("button");
+   b.id="ed-install-app"; b.type="button"; b.textContent="App installieren";
+   b.setAttribute("aria-label","Emergency Delivery auf dem Gerät installieren");
+   b.style.cssText="position:fixed;right:14px;bottom:14px;z-index:15000;background:#f97316;color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:700;box-shadow:0 4px 16px #0003;cursor:pointer";
+   b.addEventListener("click",async()=>{
+     if(deferredPrompt){
+       deferredPrompt.prompt();
+       try{await deferredPrompt.userChoice;}catch(_e){}
+       deferredPrompt=null;
+       b.style.display="none";
+       return;
+     }
+     if(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone){
+       alert("Emergency Delivery ist bereits als App geöffnet.");
+     } else if(isIOS()){
+       alert('Zum Installieren: Öffne diese Seite in Safari, tippe auf „Teilen“ und wähle „Zum Home-Bildschirm“.');
+     } else {
+       alert('Zum Installieren: Öffne das Browser-Menü und wähle „App installieren“ oder „Zum Startbildschirm hinzufügen“. Falls die Option fehlt, aktualisiere die Seite und prüfe, ob der aktuelle Build online ist.');
+     }
+   });
+   document.body.appendChild(b);
+   if(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) b.style.display="none";
+ }
+ window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;installButton();});
+ window.addEventListener("appinstalled",()=>{const b=document.getElementById("ed-install-app");if(b)b.style.display="none";});
+ if("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("/service-worker.js").catch(err=>console.warn("PWA service worker:",err)));
+ if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",installButton); else installButton();
+})();
+</script></body></html>
