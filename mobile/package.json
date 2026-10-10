@@ -1,0 +1,20 @@
+{
+  "name": "emergency-delivery-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated Capacitor shell for Emergency Delivery mobile app",
+  "scripts": {
+    "build": "node ./scripts/prepare-web.js",
+    "cap:sync": "npm run build && cap sync",
+    "android:add": "npm run build && cap add android",
+    "ios:add": "npm run build && cap add ios",
+    "android:check": "node ./scripts/check-android-integration.js"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "typescript": "^5.8.3"
+  }
+}
