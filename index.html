@@ -950,7 +950,8 @@ if ("serviceWorker" in navigator) {
     if(document.getElementById("edMobileNav")) return;
     const n=document.createElement("nav");
     n.id="edMobileNav"; n.className="ed-mobile-nav";
-    const isDriver=String(window.currentUser?.role||"").toLowerCase()==="driver";
+    const driverRole=String(window.currentUser?.role||"").trim().toLowerCase();
+    const isDriver=["driver","fahrer"].includes(driverRole);
     n.innerHTML=
       '<button data-go="Dashboard">⌂<br>Start</button>'+
       (isDriver?'':'<button data-go="Auftrag+">▣<br>Auftrag+</button>')+
