@@ -352,6 +352,7 @@ if(p==="driver"){
   c.querySelectorAll("[data-stop-action='navstop']").forEach(btn=>btn.addEventListener("click",()=>nav(btn.dataset.address||"")));
   c.querySelectorAll("[data-photo-stop]").forEach(inp=>inp.addEventListener("change",async()=>{const f=inp.files?.[0];if(!f)return;const reader=new FileReader();reader.onload=async()=>{try{const stop=(S.stops||[]).find(x=>String(x.id)===String(inp.dataset.photoStop));if(!stop)throw new Error("Stop nicht gefunden");await api("/api/trips/"+stop.trip_id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({delivery_photo:reader.result})});alert("Lieferfoto gespeichert.");}catch(e){alert(e.message||"Lieferfoto konnte nicht gespeichert werden.")}};reader.readAsDataURL(f)}));
   m.forEach(t=>(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).forEach((s,i)=>canvasStop(s.id,s.signature_data||(i===0?t.signature_data:null))));
+  m.forEach(t=>{if(String(t.status||"").toLowerCase()==="in transit")startAutoGps(t.id);else if(String(t.status||"").toLowerCase()==="delivered")stopAutoGps(t.id);});
 }
 if(p==="customers"){
   c.innerHTML=`<div class="page-head"><div><div class="eyebrow">STAMMDATEN</div><h2>Kunden & Kundenakte</h2><p class="muted">Stammdaten, Ansprechpartner, Lieferhinweise, Aufträge, Lieferscheine und Rechnungen an einer Stelle.</p></div><button class="btn primary" onclick="openCustomer()">+ Kunde hinzufügen</button></div>
