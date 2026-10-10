@@ -319,14 +319,23 @@ if(p==="driver"){
         '</div><div class="row"><button class="btn secondary" data-stop-action="arrived" data-stop-id="'+s.id+'">Angefahren</button><button class="btn secondary" data-stop-action="delivered" data-stop-id="'+s.id+'">Zugestellt</button><button class="btn secondary" data-stop-action="navstop" data-address="'+esc(s.address||"")+'">Navigation</button></div><label class="btn secondary" style="display:inline-block;margin-top:8px">Lieferfoto<input type="file" accept="image/*" capture="environment" data-photo-stop="'+s.id+'" style="display:none"></label><canvas class="sig" id="sig-stop-'+s.id+'" width="700" height="180" style="touch-action:none;cursor:crosshair"></canvas><br>'+
         '<button class="btn" data-signature-id="'+s.id+'">Unterschrift auf Lieferschein speichern</button></div>'
       ).join("") || ('<div class="panel"><p class="muted">Für diese Tour sind keine einzelnen Stopps angelegt. Du kannst die Kundenunterschrift trotzdem direkt auf dem Lieferschein erfassen.</p><canvas class="sig" id="sig-trip-'+t.id+'" width="700" height="180" style="touch-action:none;cursor:crosshair"></canvas><br><button class="btn" data-trip-signature-id="'+t.id+'">Unterschrift speichern</button></div>'));
+    const delivered=String(t.status||"").toLowerCase()==="delivered";
+    const tripDetails='<details style="margin:10px 0"><summary style="cursor:pointer;font-weight:700;padding:8px 0">Fahrtdetails anzeigen</summary><div class="muted" style="padding:8px 0">'+
+      '<p><b>Fahrt:</b> '+esc(t.trip_number||"—")+'</p>'+
+      '<p><b>Route / Ziel:</b> '+esc(t.route||"Keine Route hinterlegt")+'</p>'+
+      '<p><b>Gewicht:</b> '+Number(t.weight_kg||0)+' KG</p>'+
+      '<p><b>Status:</b> '+esc(t.status||"Offen")+'</p>'+
+      (t.customer_name?'<p><b>Kunde:</b> '+esc(t.customer_name)+'</p>':'')+
+      (t.address?'<p><b>Adresse:</b> '+esc(t.address)+'</p>':'')+
+      '</div></details>';
     return '<div class="panel"><b>'+esc(t.trip_number||"")+'</b> · '+esc(t.route||"")+
       '<p>'+Number(t.weight_kg||0)+' KG · '+esc(t.status||"")+
-      '</p><div class="row">'+
-      '<button class="btn" data-trip-action="transit" data-trip-id="'+t.id+'">Unterwegs</button>'+
-      '<button class="btn" data-trip-action="delivered" data-trip-id="'+t.id+'">Geliefert</button>'+
+      '</p>'+tripDetails+'<div class="row">'+
+      '<button class="btn" data-trip-action="transit" data-trip-id="'+t.id+'" '+(delivered?'disabled title="Diese Fahrt ist bereits geliefert"':'')+'>Unterwegs</button>'+
+      '<button class="btn" data-trip-action="delivered" data-trip-id="'+t.id+'" '+(delivered?'disabled title="Diese Fahrt ist bereits geliefert"':'')+'>Geliefert</button>'+
       '<button class="btn secondary" data-trip-action="gps" data-trip-id="'+t.id+'">GPS aktualisieren</button>'+
       '<button class="btn secondary" data-trip-action="nav" data-route="'+esc(t.route||"")+'">Navigation</button>'+
-      '</div>'+signatureHtml+'</div>';
+      '</div>'+(t.signature_data?'<p class="muted">✓ Unterschrift gespeichert'+(t.signature_at?' · '+esc(new Date(t.signature_at).toLocaleString()):'')+'</p>':'')+signatureHtml+'</div>';
   }).join("") || "Keine Fahrten.";
   c.innerHTML='<div class="panel"><h2>Fahrer-App</h2>'+cards+'</div>';
   c.querySelectorAll("[data-trip-action]").forEach(btn=>{
