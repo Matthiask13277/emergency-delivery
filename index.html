@@ -150,13 +150,13 @@ table{display:block;max-width:100%;overflow-x:auto}
 @media (max-width:820px){
   .ed-mobile-nav{
     position:fixed;left:8px;right:8px;bottom:8px;z-index:120;
-    display:grid;grid-template-columns:repeat(4,1fr);gap:6px;
+    display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;
     padding:7px;background:rgba(17,17,17,.96);border-radius:18px;
     box-shadow:0 10px 35px rgba(0,0,0,.35)
   }
   .ed-mobile-nav button{
     min-height:48px;border:0;border-radius:12px;background:#252525;color:#fff;
-    font-size:12px!important;font-weight:700
+    font-size:11px!important;font-weight:700;padding:4px 1px
   }
   .ed-mobile-nav button:active{transform:scale(.98)}
   body{padding-bottom:78px}
@@ -940,6 +940,7 @@ if ("serviceWorker" in navigator) {
       "Dashboard":"dashboard",
       "Auftrag+":"auftragplus",
       "Kalender":"calendar",
+      "Fahrer-App":"driver",
       "Mein Konto":"account"
     };
     const page=routes[label];
@@ -952,6 +953,7 @@ if ("serviceWorker" in navigator) {
     n.innerHTML=
       '<button data-go="Dashboard">⌂<br>Start</button>'+
       '<button data-go="Auftrag+">▣<br>Auftrag+</button>'+
+      '<button data-go="Fahrer-App">🚚<br>Fahrten</button>'+
       '<button data-go="Kalender">□<br>Kalender</button>'+
       '<button data-go="Mein Konto">●<br>Konto</button>';
     n.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
