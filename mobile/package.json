@@ -7,7 +7,8 @@
     "build": "node ./scripts/prepare-web.js",
     "cap:sync": "npm run build && cap sync",
     "android:add": "npm run build && cap add android",
-    "ios:add": "npm run build && cap add ios"
+    "ios:add": "npm run build && cap add ios",
+    "android:check": "node ./scripts/check-android-integration.js"
   },
   "dependencies": {
     "@capacitor/core": "^7.4.3"
