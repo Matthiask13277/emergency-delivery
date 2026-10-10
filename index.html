@@ -309,7 +309,7 @@ if(p==="vehicles"){c.innerHTML=`<div class="page-head"><div><div class="eyebrow"
 if(p==="live")c.innerHTML=`<div class="panel"><h2>Live-Fahrzeuge</h2><p class="muted">Positionen werden automatisch alle 10 Sekunden aktualisiert.</p><div class="live" id="livebox"></div></div>`; if(p==="live"){live();setInterval(live,10000)}
 if(p==="driver"){
   document.body.classList.add("driver-mode");
-  const m=S.trips.filter(t=>String(t.driver_id)===String(S.user.id));
+  const m=S.trips.filter(t=>{const ids=[t.driver_id,t.driverId,t.assigned_driver_id,t.assignedDriverId].filter(v=>v!==undefined&&v!==null&&v!=="").map(String);const names=[t.driver_name,t.driverName,t.assigned_driver_name,t.assignedDriverName].filter(Boolean).map(v=>String(v).trim().toLowerCase());const userIds=[S.user.id,S.user.user_id,S.user.userId].filter(v=>v!==undefined&&v!==null&&v!=="").map(String);const userNames=[S.user.name,S.user.username].filter(Boolean).map(v=>String(v).trim().toLowerCase());return ids.some(id=>userIds.includes(id))||names.some(name=>userNames.includes(name));});
   const cards=m.map(t=>{
     const stops=(S.stops||[]).filter(s=>String(s.trip_id)===String(t.id)).sort((a,b)=>Number(a.stop_order||0)-Number(b.stop_order||0));
     const signatureHtml='<h4>Kundenunterschrift auf dem Lieferschein</h4>'+
