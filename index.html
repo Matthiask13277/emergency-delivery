@@ -950,10 +950,11 @@ if ("serviceWorker" in navigator) {
     if(document.getElementById("edMobileNav")) return;
     const n=document.createElement("nav");
     n.id="edMobileNav"; n.className="ed-mobile-nav";
+    const isDriver=String(window.currentUser?.role||"").toLowerCase()==="driver";
     n.innerHTML=
       '<button data-go="Dashboard">⌂<br>Start</button>'+
-      '<button data-go="Auftrag+">▣<br>Auftrag+</button>'+
-      '<button data-go="Fahrer-App">🚚<br>Fahrten</button>'+
+      (isDriver?'':'<button data-go="Auftrag+">▣<br>Auftrag+</button>')+
+      (isDriver?'<button data-go="Fahrer-App">🚚<br>Fahrten</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button>')+
       '<button data-go="Kalender">□<br>Kalender</button>'+
       '<button data-go="Mein Konto">●<br>Konto</button>';
     n.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
