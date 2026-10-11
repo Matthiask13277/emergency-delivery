@@ -1,6 +1,6 @@
 # Android prototype integration checklist
 
-Status: Java service and JS bridge are source scaffolding only. The currently installed APK loads the hosted production web app, so it does not include this bridge yet.
+Status: The prototype branch's root `index.html` now calls the native `DriverLocation` plugin when a trip enters `In Transit`, and stops it when the trip is delivered. The native plugin/service remain source scaffolding until they are integrated into and built with the generated Android project. The currently installed APK loads the hosted production web app, so it does not contain the native plugin.
 
 ## Safe integration sequence
 
@@ -8,9 +8,9 @@ Status: Java service and JS bridge are source scaffolding only. The currently in
 2. In the local generated project at `mobile/android`, copy `DriverLocationPlugin.java` and `DriverLocationService.java` into the Java package directory matching `com.emergencydelivery.mobile` (normally `app/src/main/java/com/emergencydelivery/mobile/`).
 3. Merge the permissions and service declaration from `AndroidManifest.xml` into `mobile/android/app/src/main/AndroidManifest.xml`. Do not replace the generated manifest wholesale.
 4. Register `DriverLocationPlugin.class` in the generated `MainActivity.java` before calling `super.onCreate(savedInstanceState)`. Preserve the existing package name and imports.
-5. Add `capacitor-bridge.js` to the actual driver page and load it before the driver lifecycle code. Merely storing the file in this folder does not load it into the hosted app.
-6. Call `window.startNativeDriverLocation(tripId, token)` only after the driver is authenticated and the trip status becomes `In Transit`. Call `window.stopNativeDriverLocation()` on Delivered and logout.
-7. The Capacitor app currently uses `server.url` to load the live hosted website. Do not change that URL or deploy bridge changes to production as part of this prototype. Until a separate preview URL exists, a test APK cannot safely validate the UI bridge end-to-end.
+5. The prototype `index.html` already has a guarded call to `window.Capacitor.Plugins.DriverLocation.start({tripId, token})` on `In Transit` and `.stop()` on Delivered. Verify that logout also stops tracking and ensure the native plugin is registered before testing.
+6. The Capacitor app currently uses `server.url` to load the live hosted website. The branch's `index.html` changes are not served by that URL unless deployed. Do not deploy bridge changes to production as part of this prototype. Until a separate preview URL exists, the UI bridge cannot be validated end-to-end without changing the live site.
+7. The generated Android project is local and may be ignored by Git. Integrate and compile the plugin in that generated project or add a reproducible build workflow that creates the Capacitor project from source.
 8. Build and test on a physical Android device. Confirm the foreground notification is visible and the admin timestamp continues updating with the screen locked. Also test Delivered/logout and denied permissions.
 
 ## Security and reliability notes
