@@ -4712,7 +4712,6 @@ async function v132DdtPdf(trip,customer,stops){
     doc.moveDown(0.4);
   });
   doc.moveDown().text(`Firma digitale: ${trip.signature_at||"—"}`);
-  doc.text(`GPS: ${trip.current_lat||"—"}, ${trip.current_lng||"—"}`);
   doc.end();
  });
 }
