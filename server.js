@@ -471,9 +471,25 @@ app.patch("/api/invoices/:id",auth,roles("Admin","Accounting"),async(req,res)=>{
 });
 app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
-    const d=(await q("select * from delivery_documents where id=$1",[req.params.id]))[0];
+    await q(`CREATE TABLE IF NOT EXISTS delivery_documents(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      trip_id uuid UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+      document_number text UNIQUE NOT NULL,
+      issued_at timestamptz DEFAULT now(),
+      status text DEFAULT 'Open',
+      proof_complete boolean DEFAULT false
+    )`);
+    let d=(await q("select * from delivery_documents where id=$1 or trip_id=$1 limit 1",[req.params.id]))[0];
+    let t;
+    if(d){
+      t=(await q("select * from trips where id=$1",[d.trip_id]))[0];
+    }else{
+      t=(await q("select * from trips where id=$1",[req.params.id]))[0];
+      if(!t)return res.status(404).json({error:"Auftrag/Lieferschein nicht gefunden"});
+      const n=await q(`select 'DDT-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(document_number,'-',3) as int)),0)+1)::text,4,'0') n from delivery_documents`);
+      d=(await q("insert into delivery_documents(trip_id,document_number,proof_complete,status) values($1,$2,$3,$4) returning *",[t.id,n[0].n,t.status==="Delivered",t.status==="Delivered"?"Completed":"Open"]))[0];
+    }
     if(!d)return res.status(404).json({error:"Lieferschein nicht gefunden"});
-    const t=(await q("select * from trips where id=$1",[d.trip_id]))[0];
     if(!t)return res.status(404).json({error:"Zugehöriger Auftrag nicht gefunden"});
     const b=req.body||{};
     const customerId=b.customerId||t.customer_id;
