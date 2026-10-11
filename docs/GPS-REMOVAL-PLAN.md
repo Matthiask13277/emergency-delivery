@@ -58,3 +58,23 @@ The first code pass is not yet ready to merge. A second server-side audit found 
 - Review branch: partial changes committed.
 - Runtime/build/regression tests: not run in this environment.
 - Do not merge/deploy yet. Further removal is needed and a real preview test is required before approval.
+
+
+## Additional cleanup pass (2026-10-11)
+
+Completed on the isolated review branch:
+
+- Removed the remaining `POST /api/gps` route.
+- Removed the GPS action branch from offline sync while retaining status/stop sync.
+- Removed the remaining `POST /api/driver/live-gps` ingestion route in the earlier pass.
+- Removed the live-fleet view placeholder from the web UI.
+- Removed the bootstrap payload's query and response field for recent GPS history (the underlying database table/data are untouched).
+- Removed the driver-position marker from the control-center map-data feed; stop markers and route data remain.
+
+Still outstanding and requiring careful consumer review:
+
+- The server contains additional control-center/live endpoints that return GPS status/coordinates or calculate ETA from the last driver coordinate.
+- GPS-stale alert generation and older report/dashboard routes still read GPS history.
+- Some stop/proof handlers accept coordinates or update trip location fields; these should be separated from continuous tracking without breaking proof capture or stop completion.
+- The trip PATCH API still permits current_lat/current_lng; remove these from driver-editable fields after confirming no route-planning consumer depends on that patch.
+- No runtime tests/build have been run; this branch is not ready to merge/deploy.
