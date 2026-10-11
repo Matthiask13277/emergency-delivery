@@ -343,7 +343,7 @@ if(p==="driver"){
     const action=btn.dataset.tripAction;
     if(action==="transit")btn.addEventListener("click",()=>st(id,"In Transit"));
     if(action==="delivered")btn.addEventListener("click",()=>st(id,"Delivered"));
-    if(action==="gps")btn.addEventListener("click",()=>gps(id));
+    
     if(action==="nav")btn.addEventListener("click",()=>nav(btn.dataset.route||""));
   });
   c.querySelectorAll("[data-signature-id]").forEach(btn=>btn.addEventListener("click",()=>saveStopSignature(btn.dataset.signatureId)));
