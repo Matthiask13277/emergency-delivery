@@ -255,17 +255,6 @@ function goTo(id){
 }
 function menuBtn(label,icon,action,active=false){return `<button class="menu-btn ${active?"active":""}" onclick="${action}"><span class="ico">${icon}</span>${label}</button>`}
 
-function compactEmptyDashboardMap(){
-  document.querySelectorAll("#root .map, #root .mapGrid, #root .map-canvas").forEach(el=>{
-    const txt=(el.textContent||"").trim();
-    const hasMarker=el.querySelector(".marker,.vehicle-marker,.route-marker,[data-lat]");
-    if(!hasMarker && txt.length<120){
-      el.classList.add("dashboard-map-empty");
-      el.innerHTML='<div class="empty-inner"><div class="empty-icon">⌖</div><h3>Live-Karte entfernt</h3><p>Die Live-Fahrerortung ist deaktiviert.</p></div>';
-    }
-  });
-}
-
 const PERMISSION_DEFS=[['auftrag_plus','Auftrag+'],['customers','Kundendaten'],['vehicles','Fahrzeuge'],['calendar','Kalender'],['documents','Lieferscheine'],['invoices','Rechnungen'],['finance','Finanz-Dashboard'],['notifications','Benachrichtigungen'],['driver','Fahrer-App'],['navigation','Navigation'],['status_update','Status aktualisieren'],['portal','Kundenportal'],['dispatch_assign','Fahrer/Fahrzeug zuweisen'],['cost_calculator','Kostenrechner'],['users_manage','Benutzerverwaltung'],['company','Firmendaten']];
 const ROLE_PERMISSIONS={Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,notifications:true,dispatch_assign:true},Driver:{auftrag_plus:true,customers:true,calendar:true,documents:true,driver:true,navigation:true,status_update:true},Accounting:{customers:true,calendar:true,documents:true,invoices:true,portal:true,auftrag_plus:true,dispatch_assign:true,cost_calculator:true}};
 function canUI(k){if(!S?.user)return false;if(S.user.role==='Admin')return true;const p=S.user.permissions||{};return Object.prototype.hasOwnProperty.call(p,k)?!!p[k]:!!(ROLE_PERMISSIONS[S.user.role]||{})[k]}
