@@ -95,3 +95,23 @@ Important remaining work:
 - Delivery-proof handlers accept proof coordinates and may store them with the proof record. Photo/signature proof should remain; decide whether to remove proof-coordinate capture separately.
 - Historical GPS table and schema are intentionally untouched; no records have been deleted.
 - Runtime/build/regression tests remain unrun. Do not merge or deploy until the remaining consumers are reviewed and a preview passes.
+
+
+## Fourth cleanup pass (2026-10-11)
+
+Additional server-side cleanup committed on the review branch:
+
+- Control-center trip snapshots no longer return current driver coordinates or GPS freshness/status; ETA and active-stop data remain.
+- Legacy heartbeat accepts no location values and no longer updates GPS coordinate/timestamp fields.
+- Admin live control-center/map feeds no longer include current driver coordinates or GPS ping age; route/stop geometry remains.
+- GPS geofence-check/automatic-arrival routes now return HTTP 410 with instructions to confirm arrival manually.
+- GPS-based alert sweep/background worker and GPS-only alert creation were removed; ETA-overdue alert checking remains.
+- Delivery proof capture no longer accepts or stores new proof coordinates; photos, signatures, timestamps and device metadata remain.
+- GPS-history queries were removed from the old dispatch trip snapshot; historical database records and schema were not deleted.
+
+## Validation boundary
+
+- All edits remain isolated on `review/remove-driver-gps-tracking`; `main` and the live deployment have not been changed.
+- The HTML source scan on this branch found no remaining `gps`, `geolocation`, `current_lat`, `current_lng` or live-map placeholder references.
+- This is not yet a verified release: a server-side source scan still needs review for legacy location references and a real Node/build + driver/admin regression test run is unavailable through the repository file editor. In particular, existing historical proof coordinates and legacy schema columns are retained, and the separate Android prototype branch has not been modified.
+- Do not merge or deploy until a runtime/preview test confirms driver status updates, manual arrival, proof photos/signatures, route planning, maps and ETA.
