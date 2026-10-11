@@ -541,6 +541,7 @@ async function previewPdf(type,id){
     const old=document.getElementById("edPdfPreviewModal");if(old)old.remove();
     const m=document.createElement("div");m.id="edPdfPreviewModal";m.className="ed-pdf-modal";
     m.innerHTML=`<div class="ed-pdf-backdrop" onclick="closePdfPreview()"></div><div class="ed-pdf-dialog"><div class="ed-pdf-head"><b>${title}</b><div><button class="btn secondary" onclick="window.open(edPdfPreviewUrl,'_blank')">In neuem Fenster</button><button class="btn" onclick="closePdfPreview()">Schließen</button></div></div><iframe class="ed-pdf-frame" src="${edPdfPreviewUrl}" title="${title}"></iframe></div>`;
+    m.querySelector("iframe").srcdoc=html;
     document.body.appendChild(m);
   }catch(e){alert("Vorschau konnte nicht geladen werden: "+e.message)}
 }
