@@ -277,7 +277,7 @@ async function ensureDeliveryDocuments(){
     try{await createDdt37({user:{id:null,name:"System",role:"Admin"}},t.id)}catch(e){console.warn("DDT backfill:",t.id,String(e.message||e))}
   }
 }
-app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
+app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,company]=await Promise.all([
 q("select id,name,role from users order by name"),q("select * from customers order by company"),q(req.user.role==="Driver"?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",req.user.role==="Driver"?[req.user.id]:[]),q("select * from vehicles order by name"),
 q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select * from company_settings where id=1")]);
 res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,company:company[0]||{}})});
@@ -911,7 +911,7 @@ app.get("/api/permissions",auth,async(req,res)=>{
   const map={
     Admin:["dashboard","dispatch","drivers","vehicles","customers","orders","invoices","documents","audit","settings"],
     Dispatcher:["dashboard","dispatch","drivers","vehicles","customers","orders","documents"],
-    Driver:["dashboard","my_trips","navigation","delivery_proof","gps"],
+    Driver:["dashboard","my_trips","navigation","delivery_proof"],
     Accounting:["dashboard","customers","invoices","documents","audit"]
   };
   res.json({role:req.user.role,permissions:map[req.user.role]||[]});
