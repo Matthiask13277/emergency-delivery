@@ -2007,8 +2007,9 @@ app.post("/api/driver/stops/:id/geofence-check",auth,roles("Driver","Admin"),asy
       from trip_stops s join trips t on t.id=s.trip_id where s.id=$1`,[req.params.id]))[0];
     if(!st)return res.status(404).json({error:"Stopp nicht gefunden"});
     if(req.user.role==="Driver" && st.driver_id!==req.user.id)return res.status(403).json({error:"Nicht deine Tour"});
-    const lat=Number(req.body.lat),lng=Number(req.body.lng);
-    if(!Number.isFinite(lat)||!Number.isFinite(lng)||st.lat==null||st.lng==null)return res.status(400).json({error:"GPS oder Stoppkoordinaten fehlen"});
+    return res.status(410).json({error:"GPS-basierte Ankunft ist deaktiviert. Bitte Ankunft manuell bestätigen."});
+    /* GPS arrival logic disabled */
+    const lat=NaN,lng=NaN;
     const R=6371,la1=lat*Math.PI/180,la2=Number(st.lat)*Math.PI/180,dl=(Number(st.lat)-lat)*Math.PI/180,dg=(Number(st.lng)-lng)*Math.PI/180;
     const x=Math.sin(dl/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dg/2)**2,km=R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)),meters=km*1000;
     const arrived=meters<=Number(st.arrival_radius_m||150);
@@ -2444,138 +2445,13 @@ app.get("/api/dispatch/map-v73/:id",auth,roles("Admin","Dispatcher","Driver"),as
     const t=(await q(`select t.*,v.name vehicle_name,v.plate,u.name driver_name from trips t left join vehicles v on v.id=t.vehicle_id left join users u on u.id=t.driver_id where t.id=$1`,[req.params.id]))[0];
     if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
     const stops=await q(`select id,stop_order,dispatch_position,address,customer_name,lat,lng,route_eta_at,route_arrival_at,planned_window_start,planned_window_end from trip_stops where trip_id=$1 order by dispatch_position nulls last,stop_order`,[req.params.id]);
-    const gps=(await q(`select lat,lng,accuracy,created_at from gps_points where trip_id=$1 order by created_at desc limit 1`,[req.params.id]))[0]||null;
-    res.json({trip:t,stops,gps})
+    res.json({trip:t,stops})
   }catch(e){res.status(500).json({error:e.message})}
 });
 
 
 // V74 live map snapshot
-// V75 live alerts
-app.post("/api/dispatch/live-alerts-v75/check/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
-    const id=req.params.id;
-    const t=(await q(`select * from trips where id=$1`,[id]))[0];
-    if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
-    const gps=(await q(`select lat,lng,created_at from gps_points where trip_id=$1 order by created_at desc limit 1`,[id]))[0]||null;
-    const stops=await q(`select * from trip_stops where trip_id=$1 order by dispatch_position nulls last,stop_order`,[id]);
-    const now=Date.now(), age=gps?Math.round((now-new Date(gps.created_at).getTime())/1000):null;
-    const open=[];
-    if(!gps)open.push(["GPS_OFFLINE","critical","Kein GPS-Signal"]);
-    else if(age>180)open.push(["GPS_STALE","warning",`GPS seit ${age}s nicht aktualisiert`]);
-    const active=stops.find(x=>!x.delivered_at);
-    if(active && active.lat!=null&&active.lng!=null&&gps){
-      const rad=x=>x*Math.PI/180,R=6371,a=rad(Number(active.lat)-Number(gps.lat)),b=rad(Number(active.lng)-Number(gps.lng));
-      const z=Math.sin(a/2)**2+Math.cos(rad(Number(gps.lat)))*Math.cos(rad(Number(active.lat)))*Math.sin(b/2)**2;
-      const km=2*R*Math.asin(Math.sqrt(z));
-      if(km<=(Number(t.arrival_radius_m||150)/1000))open.push(["GEOFENCE_REACHED","info",`Aktiver Stopp erreicht (${Math.round(km*1000)} m)`]);
-    }
-    const alerts=[];
-    for(const [type,severity,message] of open){
-      const recent=await q(`select id from control_alerts where trip_id=$1 and type=$2 and created_at>now()-interval '10 minutes' and acknowledged=false limit 1`,[id,type]);
-      if(!recent.length){
-        const a=(await q(`insert into control_alerts(trip_id,type,severity,message) values($1,$2,$3,$4) returning *`,[id,type,severity,message]))[0];
-        alerts.push(a)
-      }
-    }
-    const all=await q(`select * from control_alerts where trip_id=$1 and acknowledged=false order by created_at desc`,[id]);
-    res.json({created:alerts,open:all})
-  }catch(e){res.status(400).json({error:e.message})}
-});
-
-
-// V76 centralized alert center
-app.get("/api/control-center/alert-center-v76",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
-    const rows=await q(`select a.*,t.trip_number,t.priority trip_priority,t.planning_date,v.name vehicle_name,v.plate,u.name driver_name
-      from control_alerts a left join trips t on t.id=a.trip_id left join vehicles v on v.id=t.vehicle_id left join users u on u.id=t.driver_id
-      where a.acknowledged=false order by case a.severity when 'critical' then 1 when 'warning' then 2 else 3 end,a.created_at desc`);
-    const counts=(await q(`select count(*)::int total,count(*) filter(where severity='critical')::int critical,count(*) filter(where severity='warning')::int warning,count(*) filter(where severity='info')::int info from control_alerts where acknowledged=false`))[0];
-    res.json({alerts:rows,counts})
-  }catch(e){res.status(500).json({error:e.message})}
-});
-app.post("/api/control-center/alert-center-v76/:id/ack",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
-    const r=await q(`update control_alerts set acknowledged=true,acknowledged_at=now() where id=$1 returning *`,[req.params.id]);
-    if(!r.length)return res.status(404).json({error:"Alarm nicht gefunden"});
-    await audit(req,"CONTROL_ALERT_ACK",req.params.id);
-    res.json(r[0])
-  }catch(e){res.status(400).json({error:e.message})}
-});
-
-
-// V77 automatic live alert sweep
-app.post("/api/control-center/alert-sweep-v77",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
-    const trips=await q(`select id,trip_number,arrival_radius_m from trips where status in('Planned','In Transit')`);
-    let created=0;
-    for(const t of trips){
-      const gps=(await q(`select lat,lng,created_at from gps_points where trip_id=$1 order by created_at desc limit 1`,[t.id]))[0]||null;
-      const age=gps?Math.round((Date.now()-new Date(gps.created_at).getTime())/1000):null;
-      const checks=[];
-      if(!gps) checks.push(["GPS_OFFLINE","critical","Kein GPS-Signal"]);
-      else if(age>180) checks.push(["GPS_STALE","warning",`GPS seit ${age}s nicht aktualisiert`]);
-      const active=(await q(`select * from trip_stops where trip_id=$1 and delivered_at is null order by dispatch_position nulls last,stop_order limit 1`,[t.id]))[0];
-      if(active&&gps&&active.lat!=null&&active.lng!=null){
-        const rad=x=>x*Math.PI/180,R=6371,a=rad(Number(active.lat)-Number(gps.lat)),b=rad(Number(active.lng)-Number(gps.lng));
-        const z=Math.sin(a/2)**2+Math.cos(rad(Number(gps.lat)))*Math.cos(rad(Number(active.lat)))*Math.sin(b/2)**2;
-        const km=2*R*Math.asin(Math.sqrt(z));
-        if(km<=Number(t.arrival_radius_m||150)/1000) checks.push(["GEOFENCE_REACHED","info",`Aktiver Stopp innerhalb ${Math.round(km*1000)} m`]);
-        const eta=Math.max(1,Math.round(km/45*60));
-        if(active.planned_time&&Date.now()>new Date(active.planned_time).getTime()&&km>0.5) checks.push(["ETA_EXCEEDED","warning",`Aktiver Stopp vermutlich verspätet; Entfernung ${km.toFixed(1)} KM, ETA ${eta} Min.`]);
-      }
-      for(const [type,severity,message] of checks){
-        const exists=await q(`select id from control_alerts where trip_id=$1 and type=$2 and acknowledged=false and created_at>now()-interval '10 minutes' limit 1`,[t.id,type]);
-        if(!exists.length){
-          const createdAlert=(await q(`insert into control_alerts(trip_id,type,severity,message) values($1,$2,$3,$4) returning *`,[t.id,type,severity,message]))[0];
-          if(severity==='critical'||severity==='warning') await v81SendPush(`Emergency Delivery · ${severity.toUpperCase()}`,message,{trip_id:t.id,alert_id:createdAlert.id,type});
-          created++;
-        }
-      }
-    }
-    res.json({checked:trips.length,created})
-  }catch(e){res.status(500).json({error:e.message})}
-});
-
-
-// V78 background live-alert worker
-let v78Running=false;
-async function v78SweepInternal(){
-  if(v78Running)return {checked:0,created:0,skipped:true};
-  v78Running=true;
-  try{
-    const trips=await q(`select id,arrival_radius_m from trips where status in('Planned','In Transit')`);
-    let created=0;
-    for(const t of trips){
-      const gps=(await q(`select lat,lng,created_at from gps_points where trip_id=$1 order by created_at desc limit 1`,[t.id]))[0]||null;
-      const age=gps?Math.round((Date.now()-new Date(gps.created_at).getTime())/1000):null;
-      const checks=[];
-      if(!gps)checks.push(["GPS_OFFLINE","critical","Kein GPS-Signal"]);
-      else if(age>180)checks.push(["GPS_STALE","warning",`GPS seit ${age}s nicht aktualisiert`]);
-      const active=(await q(`select * from trip_stops where trip_id=$1 and delivered_at is null order by dispatch_position nulls last,stop_order limit 1`,[t.id]))[0];
-      if(active&&gps&&active.lat!=null&&active.lng!=null){
-        const rad=x=>x*Math.PI/180,R=6371,a=rad(Number(active.lat)-Number(gps.lat)),b=rad(Number(active.lng)-Number(gps.lng));
-        const z=Math.sin(a/2)**2+Math.cos(rad(Number(gps.lat)))*Math.cos(rad(Number(active.lat)))*Math.sin(b/2)**2;
-        const km=2*R*Math.asin(Math.sqrt(z));
-        if(km<=Number(t.arrival_radius_m||150)/1000)checks.push(["GEOFENCE_REACHED","info",`Aktiver Stopp innerhalb ${Math.round(km*1000)} m`]);
-        if(active.planned_time&&Date.now()>new Date(active.planned_time).getTime()&&km>0.5)checks.push(["ETA_EXCEEDED","warning",`Aktiver Stopp verspätet; Entfernung ${km.toFixed(1)} KM`]);
-      }
-      for(const [type,severity,message] of checks){
-        const exists=await q(`select id from control_alerts where trip_id=$1 and type=$2 and acknowledged=false and created_at>now()-interval '10 minutes' limit 1`,[t.id,type]);
-        if(!exists.length){
-          const createdAlert=(await q(`insert into control_alerts(trip_id,type,severity,message) values($1,$2,$3,$4) returning *`,[t.id,type,severity,message]))[0];
-          if(severity==='critical'||severity==='warning') await v81SendPush(`Emergency Delivery · ${severity.toUpperCase()}`,message,{trip_id:t.id,alert_id:createdAlert.id,type});
-          created++;
-        }
-      }
-    }
-    return {checked:trips.length,created};
-  }finally{v78Running=false}
-}
-const v78Timer=setInterval(()=>v78SweepInternal().catch(e=>console.error("V78 alert worker:",e.message)),30000);
-v78Timer.unref?.();
-
-
+// GPS-based live-alert endpoints and background GPS alert worker removed.
 // V79 notification feed
 app.get("/api/control-center/notifications-v79",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
