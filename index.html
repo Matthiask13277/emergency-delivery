@@ -540,6 +540,25 @@ async function previewPdf(type,id){
 }
 function inv(id){const i=S.invoices.find(x=>x.id===id);downloadPdf("/api/documents/invoice/"+id+"/pdf",i?.invoice_number||"Rechnung")}
 function ddt(id){const t=S.trips.find(x=>x.id===id);downloadPdf("/api/documents/ddt/"+id+"/pdf",t?.trip_number||"Lieferschein")}
+async function editDeliveryNote(tripId){
+ const t=(S.trips||[]).find(x=>String(x.id)===String(tripId));if(!t)return alert('Auftrag nicht gefunden.');
+ const parts=String(t.route||'').split(' → '),pickup=parts.length>1?parts[0]:'',delivery=parts.length>1?parts.slice(1).join(' → '):(t.route||'');
+ modal('<h2>Lieferschein bearbeiten</h2><p class="muted">'+esc(t.trip_number||'')+'</p><div class="form form-2">'+
+ '<label>Abholadresse<input id="ddtPickup" autocomplete="street-address" value="'+esc(pickup)+'"></label>'+
+ '<label>Lieferadresse<input id="ddtDelivery" autocomplete="street-address" value="'+esc(delivery)+'"></label>'+
+ '<label>Gewicht (KG)<input id="ddtWeight" type="number" min="0" max="1000" value="'+Number(t.weight_kg||0)+'"></label>'+
+ '<label>Stückzahl<input id="ddtPieces" type="number" min="1" value="'+Number(t.pieces||1)+'"></label>'+
+ '<label>Lieferhinweis / Notiz<input id="ddtNotes" value="'+esc(t.notes||'')+'"></label>'+
+ '<label>Status<select id="ddtStatus"><option value="Open">Offen</option><option value="Completed">Abgeschlossen</option></select></label></div>'+
+ '<div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Abbrechen</button><button class="btn primary" onclick="saveDeliveryNote(\''+String(t.id)+'\')">Speichern</button></div>');
+}
+async function saveDeliveryNote(tripId){
+ const pickupAddress=document.getElementById('ddtPickup').value.trim(),address=document.getElementById('ddtDelivery').value.trim(),weightKg=Number(document.getElementById('ddtWeight').value||0),pieces=Number(document.getElementById('ddtPieces').value||1),notes=document.getElementById('ddtNotes').value.trim(),status=document.getElementById('ddtStatus').value;
+ if(!pickupAddress||!address)return alert('Bitte Abhol- und Lieferadresse eingeben.');
+ if(weightKg<0||weightKg>1000||pieces<1)return alert('Bitte Gewicht und Stückzahl prüfen.');
+ try{await api('/api/documents/ddt/'+encodeURIComponent(tripId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pickupAddress,address,weightKg,pieces,notes,status})});closeModal();await refreshState();view('auftragplus');alert('Lieferschein wurde gespeichert.');}
+ catch(e){alert('Lieferschein konnte nicht gespeichert werden: '+e.message)}
+}
 async function deleteInvoice(id){const i=S.invoices.find(x=>String(x.id)===String(id));if(!i)return;if(!confirm("Rechnung "+(i.invoice_number||"")+" wirklich löschen?"))return;try{await api("/api/invoices/"+encodeURIComponent(id),{method:"DELETE"});S.invoices=S.invoices.filter(x=>String(x.id)!==String(id));view("invoices");}catch(e){alert(e.message||"Rechnung konnte nicht gelöscht werden.")}}
 
 function tripActions(t){
