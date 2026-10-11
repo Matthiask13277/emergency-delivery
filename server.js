@@ -994,7 +994,7 @@ app.post("/api/driver/stops/:id/proof-capture",auth,async(req,res)=>{
 
 app.get("/api/driver/stops/:id/proof",auth,async(req,res)=>{
   try{
-    const st=(await q(`select s.id,s.trip_id,s.delivery_photo,s.signature_data,s.proof_lat,s.proof_lng,s.proof_accuracy,s.proof_at,s.proof_device
+    const st=(await q(`select s.id,s.trip_id,s.delivery_photo,s.signature_data,s.proof_at,s.proof_device
       from trip_stops s join trips t on t.id=s.trip_id where s.id=$1 and (t.driver_id=$2 or $3 in ('Admin','Dispatcher','Accounting'))`,
       [req.params.id,req.user.id,req.user.role]))[0];
     if(!st)return res.status(404).json({error:"Nachweis nicht gefunden"});
@@ -1948,46 +1948,17 @@ function v58DistKm(lat1,lng1,lat2,lng2){
 }
 app.post("/api/control-center/alerts/check-live",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const trips=await q(`select id,trip_number,eta_at,eta_minutes,route_eta_end_at,route_total_duration_min from trips where status in ('Planned','In Transit') and driver_id is not null`);
+    const trips=await q(`select id,trip_number,eta_at,eta_minutes,last_eta_minutes,route_eta_end_at,route_total_duration_min from trips where status in ('Planned','In Transit') and driver_id is not null`);
     let created=0;
     for(const t of trips){
       const active=(await q(`select id,address,route_arrival_at from trip_stops where trip_id=$1 and delivered_at is null order by coalesce(dispatch_position,stop_order),stop_order limit 1`,[t.id]))[0];
-      const etaAt=t.eta_at||t.route_eta_end_at||(active&&active.route_arrival_at)||null;
-      const etaMin=Number(t.eta_minutes||t.route_total_duration_min||0);
-      if(etaAt&&etaMin>0&&new Date(etaAt).getTime()<Date.now()-5*60000){
-        await q(`insert into control_center_alerts(trip_id,alert_type,severity,message,created_at) values($1,'eta_late','warning','ETA überschritten',now())`,[t.id]).catch(()=>{});
-        created++;
+      const etaAt=t.eta_at||t.route_eta_end_at||(active&&active.route_arrival_at);
+      if(etaAt&&new Date(etaAt).getTime()<Date.now()-10*60000){
+        const recent=await q(`select id from control_alerts where trip_id=$1 and type='eta_exceeded' and created_at>now()-interval '10 minutes' and acknowledged=false limit 1`,[t.id]);
+        if(!recent.length){await q(`insert into control_alerts(trip_id,type,severity,message) values($1,'eta_exceeded','warning','Geplante ETA überschritten')`,[t.id]);created++;}
       }
     }
-    res.json({checked:trips.length,created});
-  }catch(e){res.status(500).json({error:e.message})}
-});
-
-app.post("/api/control-center/alerts/check-live",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
-    const trips=await q(`select * from trips where status in ('Planned','In Transit') and driver_id is not null`);
-    let created=0,states=[];
-    for(const t of trips){
-      const gpsAt=t.gps_last_at||t.last_driver_ping_at;
-      const age=gpsAt?Math.max(0,Math.round((Date.now()-new Date(gpsAt).getTime())/1000)):null;
-      const active=(await q(`select * from trip_stops where trip_id=$1 and delivered_at is null order by coalesce(dispatch_position,stop_order),stop_order limit 1`,[t.id]))[0];
-      const alerts=[];
-      if(age==null||age>180)alerts.push(["gps_offline","critical",`GPS seit ${age==null?"unbekannt":age+" Sekunden"} nicht aktualisiert`]);
-      else if(age>60)alerts.push(["gps_stale","warning",`GPS ist ${age} Sekunden alt`]);
-      if(active&&t.current_lat!=null&&t.current_lng!=null&&active.lat!=null&&active.lng!=null){
-        const km=v58DistKm(t.current_lat,t.current_lng,active.lat,active.lng);
-        const radius=Number(t.arrival_radius_m||150)/1000;
-        if(km<=radius)alerts.push(["geofence_arrived","info",`Fahrzeug innerhalb des Geofence für ${active.address}`]);
-        const eta=Number(t.eta_minutes||t.last_eta_minutes||0);
-        if(eta>0&&t.eta_at&&new Date(t.eta_at)<new Date(Date.now()-10*60000))alerts.push(["eta_exceeded","warning",`ETA für ${active.address} überschritten`]);
-      }
-      for(const [type,severity,message] of alerts){
-        const recent=await q(`select id from control_alerts where trip_id=$1 and type=$2 and created_at>now()-interval '10 minutes' and acknowledged=false limit 1`,[t.id,type]);
-        if(!recent.length){await q(`insert into control_alerts(trip_id,type,severity,message) values($1,$2,$3,$4)`,[t.id,type,severity,message]);created++}
-      }
-      states.push({trip_id:t.id,alert_count:alerts.length});
-    }
-    res.json({created,states})
+    res.json({created});
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.get("/api/control-center/alerts/live",auth,roles("Admin","Dispatcher"),async(req,res)=>{
@@ -2000,27 +1971,9 @@ app.get("/api/control-center/alerts/live",auth,roles("Admin","Dispatcher"),async
 });
 
 
-// V59 automatic geofence arrival and next-stop activation
+// Legacy GPS geofence route disabled; manual stop arrival remains available.
 app.post("/api/driver/stops/:id/geofence-check",auth,roles("Driver","Admin"),async(req,res)=>{
-  try{
-    const st=(await q(`select s.*,t.driver_id,t.arrival_radius_m,t.current_lat,t.current_lng,t.trip_number
-      from trip_stops s join trips t on t.id=s.trip_id where s.id=$1`,[req.params.id]))[0];
-    if(!st)return res.status(404).json({error:"Stopp nicht gefunden"});
-    if(req.user.role==="Driver" && st.driver_id!==req.user.id)return res.status(403).json({error:"Nicht deine Tour"});
-    return res.status(410).json({error:"GPS-basierte Ankunft ist deaktiviert. Bitte Ankunft manuell bestätigen."});
-    /* GPS arrival logic disabled */
-    const lat=NaN,lng=NaN;
-    const R=6371,la1=lat*Math.PI/180,la2=Number(st.lat)*Math.PI/180,dl=(Number(st.lat)-lat)*Math.PI/180,dg=(Number(st.lng)-lng)*Math.PI/180;
-    const x=Math.sin(dl/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dg/2)**2,km=R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x)),meters=km*1000;
-    const arrived=meters<=Number(st.arrival_radius_m||150);
-    if(arrived && !st.geofence_arrived_at){
-      await q(`update trip_stops set geofence_arrived_at=now(),arrived_at=coalesce(arrived_at,now()),status=coalesce(status,'Arrived') where id=$1`,[st.id]);
-      await q(`insert into control_alerts(trip_id,type,severity,message) values($1,'geofence_arrived','info',$2)`,[st.trip_id,`Fahrer ist bei Stopp ${st.stop_order}: ${st.address}`]);
-      await q(`update trips set current_lat=$1,current_lng=$2,gps_last_at=now(),gps_status='online' where id=$3`,[lat,lng,st.trip_id]);
-    }
-    const next=(await q(`select * from trip_stops where trip_id=$1 and delivered_at is null and id<>$2 order by coalesce(dispatch_position,stop_order),stop_order limit 1`,[st.trip_id,st.id]))[0]||null;
-    res.json({arrived,distance_m:Math.round(meters),stop:st,next_stop:next})
-  }catch(e){res.status(400).json({error:e.message})}
+  res.status(410).json({error:"GPS-basierte Ankunft ist deaktiviert. Bitte Ankunft manuell bestätigen."});
 });
 app.post("/api/driver/stops/:id/activate-next",auth,roles("Driver","Admin"),async(req,res)=>{
   try{
@@ -3715,7 +3668,7 @@ v113Timer.unref?.();
 // // // V114 automatic stop/proof event notifications
 async function v114SweepStops(){
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.customer_name,s.delivered_at,s.delivered_kg,s.delivered_pieces,
-    s.signature_data,s.delivery_photo,s.proof_lat,s.proof_lng,t.trip_number,t.driver_id,u.name driver_name
+    s.signature_data,s.delivery_photo,t.trip_number,t.driver_id,u.name driver_name
     from trip_stops s join trips t on t.id=s.trip_id left join users u on u.id=t.driver_id
     where t.status is not null order by s.id desc limit 1000`);
   for(const st of r.rows){
