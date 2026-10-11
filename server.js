@@ -2403,8 +2403,7 @@ app.get("/api/dispatch/map-v73/:id",auth,roles("Admin","Dispatcher","Driver"),as
 });
 
 
-// V74 live map snapshot
-// GPS-based live-alert endpoints and background GPS alert worker removed.
+// GPS-based live-map snapshot and alert worker removed.
 // V79 notification feed
 app.get("/api/control-center/notifications-v79",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
@@ -3445,7 +3444,6 @@ app.post("/api/notifications/push-health-v107/reactivate/:id",auth,roles("Admin"
 // critical_push boolean NOT NULL DEFAULT true,
 // warning_push boolean NOT NULL DEFAULT true,
 // info_push boolean NOT NULL DEFAULT false,
-// gps_push boolean NOT NULL DEFAULT true,
 // eta_push boolean NOT NULL DEFAULT true,
 // document_push boolean NOT NULL DEFAULT true,
 // maintenance_push boolean NOT NULL DEFAULT true,
@@ -3457,7 +3455,7 @@ async function v109PushAllowed(userId,kind){
   const r=await q(`select * from notification_preferences where user_id=$1`,[userId]);
   if(!r.rows.length)return true;
   const p=r.rows[0];
-  const map={critical:"critical_push",warning:"warning_push",info:"info_push",gps:"gps_push",eta:"eta_push",document:"document_push",maintenance:"maintenance_push"};
+  const map={critical:"critical_push",warning:"warning_push",info:"info_push",eta:"eta_push",document:"document_push",maintenance:"maintenance_push"};
   return map[kind] ? p[map[kind]]!==false : true;
 }
 async function v109SendToPreferred(kind,severity,title,message){
@@ -3485,7 +3483,7 @@ async function v109SendToPreferred(kind,severity,title,message){
 // V109 preference-aware push test
 app.post("/api/notifications/push-preferences-v109/test",auth,roles("Admin"),async(req,res)=>{
   try{
-    const kind=["critical","warning","info","gps","eta","document","maintenance"].includes(req.body.kind)?req.body.kind:"warning";
+    const kind=["critical","warning","info","eta","document","maintenance"].includes(req.body.kind)?req.body.kind:"warning";
     const severity=kind==="critical"?"critical":kind==="info"?"info":"warning";
     const sent=await v109SendToPreferred(kind,severity,"Emergency Delivery Test",`Test für Benachrichtigungsart: ${kind}`);
     await audit(req,"preference_aware_push_test_v109",`${kind}:${sent}`);
@@ -5022,7 +5020,6 @@ ensureV55Schema().catch(err=>console.error("V55 schema init failed:",err));
 
 async function ensureV57Schema(){
   await pool.query(`
-    ALTER TABLE trips ADD COLUMN IF NOT EXISTS gps_alert_sent_at timestamptz;
     ALTER TABLE trips ADD COLUMN IF NOT EXISTS live_alert_state text NOT NULL DEFAULT 'normal';
   `);
 }
