@@ -132,3 +132,16 @@ Additional server-side cleanup committed on the review branch:
 - A real application launch, API regression suite, and desktop/mobile packaging were not executed here. This branch is source-clean by keyword scan but is **not yet release-verified**.
 - The separate `prototype/capacitor-mobile-gps` branch and any locally installed APK/desktop builds are outside this review branch and are not changed by these commits.
 - Historical GPS/proof records remain in the database; removing them would be a separate, destructive data-retention decision.
+
+
+## Sixth cleanup pass (2026-10-11)
+
+- Removed the legacy `gps` permission from the driver role capability response.
+- Removed the obsolete empty-live-map placeholder helper from the web UI.
+- Removed GPS push-notification preference handling and initialization of the GPS alert timestamp column.
+- Rechecked the current review branch: `server.js` has no remaining references to driver coordinate fields, GPS history/proof fields, GPS status timestamps, geolocation APIs, or GPS-only alert codes; `index.html` has no GPS/live-map UI references.
+- Routing coordinates for customer addresses and planned stops remain intentionally supported for route calculation and mapping. This is not driver tracking.
+
+## Release gate
+
+The review branch must remain unmerged until someone can run the app and verify the main workflows in a preview. Source keyword checks are not a substitute for syntax/runtime testing. No build, API regression suite, or mobile package has been run from this environment.
