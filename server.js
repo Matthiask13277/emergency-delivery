@@ -315,9 +315,9 @@ app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     await q("insert into trip_stops(trip_id,stop_order,address,customer_name) values($1,1,$2,$3)",[r[0].id,deliveryAddress,(req.body.customerName||"").trim()||null]);
     try{
       const ref="ORD-"+Date.now().toString(36).toUpperCase();
-      await q(`insert into orders(customer_id,reference,pickup_address,delivery_address,delivery_city,weight_kg,pieces,priority,price_net,status,planned_trip_id,planned_at)
-        values($1,$2,$3,$4,$5,$6,$7,'normal',$8,'planned',$9,now())`,
-        [req.body.customerId,ref,pickupAddress,deliveryAddress,deliveryAddress,w,pieces,price,r[0].id]);
+      await q(`insert into orders(customer_id,reference,pickup_address,delivery_address,weight_kg,pieces,priority,price_net,status,planned_trip_id,planned_at)
+        values($1,$2,$3,$4,$5,$6,'normal',$7,'planned',$8,now())`,
+        [req.body.customerId,ref,pickupAddress,deliveryAddress,w,pieces,price,r[0].id]);
     }catch(orderErr){
       console.warn("Auftrag+ order link:",String(orderErr));
       return res.status(500).json({error:"Auftrag wurde erstellt, konnte aber nicht mit dem Auftrag verknüpft werden: "+orderErr.message});
