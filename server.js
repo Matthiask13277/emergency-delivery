@@ -5015,9 +5015,6 @@ ensureV52Schema().catch(err=>console.error("V52 schema init failed:",err));
 
 async function ensureV55Schema(){
   await pool.query(`
-    ALTER TABLE trips ADD COLUMN IF NOT EXISTS gps_status text NOT NULL DEFAULT 'offline';
-    ALTER TABLE trips ADD COLUMN IF NOT EXISTS gps_last_accuracy numeric;
-    ALTER TABLE trips ADD COLUMN IF NOT EXISTS gps_last_at timestamptz;
   `);
 }
 ensureV55Schema().catch(err=>console.error("V55 schema init failed:",err));
