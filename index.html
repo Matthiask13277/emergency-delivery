@@ -567,7 +567,9 @@ async function saveDeliveryNote(tripId){
  try{await api('/api/documents/ddt/'+encodeURIComponent(tripId),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({pickupAddress,address,weightKg,pieces,notes,status})});closeModal();await refreshState();view('auftragplus');alert('Lieferschein wurde gespeichert.');}
  catch(e){alert('Lieferschein konnte nicht gespeichert werden: '+e.message)}
 }
-async function deleteInvoice(id){const i=S.invoices.find(x=>String(x.id)===String(id));if(!i)return;if(!confirm("Rechnung "+(i.invoice_number||"")+" wirklich löschen?"))return;try{await api("/api/invoices/"+encodeURIComponent(id),{method:"DELETE"});S.invoices=S.invoices.filter(x=>String(x.id)!==String(id));view("invoices");}catch(e){alert(e.message||"Rechnung konnte nicht gelöschtfunction renderDispatchAssignmentList(){
+async function deleteInvoice(id){const i=S.invoices.find(x=>String(x.id)===String(id));if(!i)return;if(!confirm("Rechnung "+(i.invoice_number||"")+" wirklich löschen?"))return;try{await api("/api/invoices/"+encodeURIComponent(id),{method:"DELETE"});S.invoices=S.invoices.filter(x=>String(x.id)!==String(id));view("invoices");}catch(e){alert(e.message||"Rechnung konnte nicht gelöscht werden.")}}
+
+function renderDispatchAssignmentList(){
   const host=document.getElementById("dispatchList"); if(!host)return;
   const query=String(document.getElementById("dispatchSearch")?.value||"").trim().toLowerCase();
   const filter=document.getElementById("dispatchAssignmentFilter")?.value||"all";
@@ -603,7 +605,6 @@ async function quickAssignTrip(id){
     alert(driverId?"Fahrer wurde zugewiesen.":"Fahrerzuweisung wurde entfernt.");
   }catch(e){alert(e.message||"Zuweisung konnte nicht gespeichert werden.")}
 }
- werden.")}}
 
 function tripActions(t){
   if(S.user.role==="Driver")return "";
