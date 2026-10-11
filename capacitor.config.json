@@ -1,0 +1,12 @@
+{
+  "appId": "com.emergencydelivery.mobile",
+  "appName": "Emergency Delivery",
+  "webDir": "mobile-shell",
+  "server": {
+    "url": "https://emergency-delivery.emergency-delivery1.blitz.cloud",
+    "cleartext": false,
+    "allowNavigation": [
+      "emergency-delivery.emergency-delivery1.blitz.cloud"
+    ]
+  }
+}
