@@ -389,7 +389,6 @@ app.delete("/api/trips/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
 });
 
 async function autoInvoice(req,t){const exists=(await q("select id from invoices where trip_id=$1",[t.id]))[0];if(exists)return;const n=await q("select 'INV-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(invoice_number,'-',3) as int)),0)+1)::text,4,'0') n from invoices");const net=+t.price_net,vat=+(net*.22).toFixed(2);await q("insert into invoices(invoice_number,customer_id,trip_id,net,vat_rate,vat,gross,status,description) values($1,$2,$3,$4,22,$5,$6,'Open',$7)",[n[0].n,t.customer_id, t.id,net,vat,net+vat,"Automatiche Rechnung für "+t.trip_number]);await audit(req,"AUTO_INVOICE_CREATED",t.trip_number)}
-app.post("/api/gps",auth,roles("Driver"),async(req,res)=>{const t=(await q("select id from trips where id=$1 and driver_id=$2",[req.body.tripId,req.user.id]))[0];if(!t)return res.status(404).json({error:"Trip not found"});const r=await q("insert into gps_points(trip_id,driver_id,lat,lng,accuracy) values($1,$2,$3,$4,$5) returning *",[t.id,req.user.id,req.body.lat,req.body.lng,req.body.accuracy||null]);await q("update trips set current_lat=$1,current_lng=$2,updated_at=now() where id=$3",[req.body.lat,req.body.lng,t.id]);res.json(r[0])});
 app.post("/api/documents/ddt-manual",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   await q(`CREATE TABLE IF NOT EXISTS delivery_documents(
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), trip_id uuid UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
@@ -520,16 +519,6 @@ app.post("/api/sync",auth,async(req,res)=>{
   for(const a of (Array.isArray(req.body?.actions)?req.body.actions:[])){
     try{
       if(!a?.id || !a?.type) throw new Error("Ungültige Sync-Aktion");
-
-      if(a.type==="gps"){
-        const t=(await q("SELECT id,driver_id FROM trips WHERE id=$1",[a.tripId]))[0];
-        if(!t) throw new Error("Tour nicht gefunden");
-        if(req.user.role!=="Driver" || t.driver_id!==req.user.id)
-          throw new Error("Keine Berechtigung für GPS dieser Tour");
-        await q("INSERT INTO gps_points(trip_id,driver_id,lat,lng,accuracy) VALUES($1,$2,$3,$4,$5)",
-          [a.tripId,req.user.id,a.lat,a.lng,a.accuracy||null]);
-        await q("UPDATE trips SET current_lat=$1,current_lng=$2,updated_at=NOW() WHERE id=$3",
-          [a.lat,a.lng,a.tripId]);
 
       } else if(a.type==="status"){
         const t=(await q("SELECT id,driver_id FROM trips WHERE id=$1",[a.tripId]))[0];
@@ -2950,22 +2939,6 @@ app.post("/api/control-center/trip/:id/heartbeat",auth,roles("Driver","Admin","D
 });
 
 
-// V56 driver GPS session endpoint
-app.post("/api/driver/live-gps",auth,roles("Driver","Admin"),async(req,res)=>{
-  try{
-    const tripId=req.body.trip_id;
-    const driverId=req.user.role==="Driver"?req.user.id:req.body.driver_id;
-    if(!tripId)return res.status(400).json({error:"trip_id erforderlich"});
-    const t=(await q("select * from trips where id=$1",[tripId]))[0];
-    if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
-    if(req.user.role==="Driver" && t.driver_id!==req.user.id)return res.status(403).json({error:"Tour nicht dem Fahrer zugewiesen"});
-    const lat=Number(req.body.lat),lng=Number(req.body.lng),accuracy=req.body.accuracy==null?null:Number(req.body.accuracy);
-    if(!Number.isFinite(lat)||!Number.isFinite(lng))return res.status(400).json({error:"Ungültige GPS-Koordinaten"});
-    await q(`insert into gps_points(trip_id,driver_id,lat,lng,accuracy) values($1,$2,$3,$4,$5)`,[tripId,driverId,lat,lng,accuracy]);
-    const r=await q(`update trips set current_lat=$1,current_lng=$2,gps_last_accuracy=$3,gps_last_at=now(),last_driver_ping_at=now(),gps_status='online' where id=$4 returning id,current_lat,current_lng,gps_last_at,gps_status`,[lat,lng,accuracy,tripId]);
-    res.json({ok:true,trip:r[0]})
-  }catch(e){res.status(400).json({error:e.message})}
-});
 app.get("/api/driver/live-session",auth,roles("Driver","Admin"),async(req,res)=>{
   try{
     const driverId=req.user.role==="Driver"?req.user.id:req.query.driver_id;
