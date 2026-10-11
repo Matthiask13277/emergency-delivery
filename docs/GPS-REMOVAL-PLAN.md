@@ -115,3 +115,20 @@ Additional server-side cleanup committed on the review branch:
 - The HTML source scan on this branch found no remaining `gps`, `geolocation`, `current_lat`, `current_lng` or live-map placeholder references.
 - This is not yet a verified release: a server-side source scan still needs review for legacy location references and a real Node/build + driver/admin regression test run is unavailable through the repository file editor. In particular, existing historical proof coordinates and legacy schema columns are retained, and the separate Android prototype branch has not been modified.
 - Do not merge or deploy until a runtime/preview test confirms driver status updates, manual arrival, proof photos/signatures, route planning, maps and ETA.
+
+
+## Fifth cleanup pass (2026-10-11)
+
+- Removed the remaining customer-facing tracking API coordinate fields and GPS coordinates from delivery-document output.
+- Removed GPS-status notification generation.
+- Removed initialization of legacy GPS status/timestamp/accuracy columns. Existing database columns and historic data are deliberately not dropped.
+- Final source scan of `server.js` on this branch found no references to `current_lat`, `current_lng`, `gps_points`, `proof_lat`, `proof_lng`, `gps_status`, `gps_last_at`, or geolocation APIs.
+- Final source scan of `index.html` found no GPS/geolocation/live-map references.
+
+## Current verification status
+
+- The branch is 25 commits ahead of `main`, with no changes merged into `main`.
+- No GitHub Actions workflow run was associated with the latest cleanup commit, and `package.json` defines desktop packaging scripts but no test/lint script.
+- A real application launch, API regression suite, and desktop/mobile packaging were not executed here. This branch is source-clean by keyword scan but is **not yet release-verified**.
+- The separate `prototype/capacitor-mobile-gps` branch and any locally installed APK/desktop builds are outside this review branch and are not changed by these commits.
+- Historical GPS/proof records remain in the database; removing them would be a separate, destructive data-retention decision.
