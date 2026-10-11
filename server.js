@@ -469,7 +469,7 @@ app.patch("/api/invoices/:id",auth,roles("Admin","Accounting"),async(req,res)=>{
     res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting","Driver"),async(req,res)=>{
   try{
     await q(`CREATE TABLE IF NOT EXISTS delivery_documents(
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -491,6 +491,7 @@ app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting")
     }
     if(!d)return res.status(404).json({error:"Lieferschein nicht gefunden"});
     if(!t)return res.status(404).json({error:"Zugehöriger Auftrag nicht gefunden"});
+    if(req.user.role==="Driver"&&String(t.driver_id)!==String(req.user.id))return res.status(403).json({error:"Dieser Lieferschein gehört nicht zu deiner zugewiesenen Fahrt."});
     const b=req.body||{};
     const customerId=b.customerId||t.customer_id;
     if(customerId && !(await q("select 1 from customers where id=$1",[customerId]))[0])return res.status(400).json({error:"Kunde nicht gefunden"});
@@ -502,7 +503,7 @@ app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting")
     const pickup=(b.pickupAddress||"").trim();
     const route=[pickup,address].filter(Boolean).join(" → ");
     const tr=(await q(`update trips set customer_id=$1,weight_kg=$2,pieces=$3,driver_id=$4,vehicle_id=$5,route=$6,notes=$7,updated_at=now() where id=$8 returning *`,
-      [customerId,weight,pieces,b.driverId||null,b.vehicleId||null,route,b.notes||null,t.id]))[0];
+      [customerId,weight,pieces,b.driverId===undefined?t.driver_id:(b.driverId||null),b.vehicleId===undefined?t.vehicle_id:(b.vehicleId||null),route,b.notes===undefined?t.notes:(b.notes||null),t.id]))[0];
     const stop=(await q("select * from trip_stops where trip_id=$1 order by stop_order limit 1",[t.id]))[0];
     if(stop){
       await q(`update trip_stops set address=$1,customer_name=$2,planned_time=$3 where id=$4`,[address,b.customerName||null,b.plannedTime||null,stop.id]);
