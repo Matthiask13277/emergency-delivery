@@ -987,35 +987,7 @@ app.post("/api/driver/stops/:id/depart",auth,roles("Driver"),async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message});}
 });
 
-app.post("/api/driver/gps",auth,roles("Driver"),async(req,res)=>{
-  const t=(await q("select id from trips where id=$1 and driver_id=$2",[req.body.tripId,req.user.id]))[0];
-  if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
-  const lat=Number(req.body.lat),lng=Number(req.body.lng);
-  if(!Number.isFinite(lat)||!Number.isFinite(lng))return res.status(400).json({error:"Ungültige GPS-Daten"});
-  const r=await q("insert into gps_points(trip_id,driver_id,lat,lng,accuracy) values($1,$2,$3,$4,$5) returning *",[t.id,req.user.id,lat,lng,req.body.accuracy||null]);
-  await q("update trips set current_lat=$1,current_lng=$2,updated_at=now() where id=$3",[lat,lng,t.id]);
-  v14Broadcast({type:"gps",trip_id:t.id,lat,lng});
-  res.json(r[0]);
-});
-
-
-
 // V17: mobile proof capture + live fleet map data
-app.get("/api/fleet/live",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
-    const rows=await q(`
-      select t.id,t.trip_number,t.status,t.current_lat,t.current_lng,t.updated_at,
-             u.name as driver_name,v.name as vehicle_name,v.plate as vehicle_plate
-      from trips t
-      left join users u on u.id=t.driver_id
-      left join vehicles v on v.id=t.vehicle_id
-      where t.status <> 'Delivered' and t.current_lat is not null and t.current_lng is not null
-      order by t.updated_at desc
-    `);
-    res.json(rows);
-  }catch(e){res.status(500).json({error:e.message});}
-});
-
 app.post("/api/driver/stops/:id/proof-capture",auth,roles("Driver"),async(req,res)=>{
   try{
     const st=(await q(`select s.*,t.driver_id from trip_stops s join trips t on t.id=s.trip_id where s.id=$1`,[req.params.id]))[0];
