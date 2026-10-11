@@ -1004,7 +1004,7 @@ app.post("/api/driver/stops/:id/proof-capture",auth,roles("Driver"),async(req,re
 app.get("/api/fleet/status",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const rows=await q(`
-      select t.id,t.trip_number,t.status,t.current_lat,t.current_lng,t.updated_at,
+      select t.id,t.trip_number,t.status,t.updated_at,
              u.name as driver_name,u.id as driver_id,
              v.name as vehicle_name,v.plate as vehicle_plate,
              (select count(*) from trip_stops s where s.trip_id=t.id)::int as stop_count,
@@ -3468,27 +3468,6 @@ app.get("/api/dispatch/map-v73/:id",auth,roles("Admin","Dispatcher","Driver"),as
 
 
 // V74 live map snapshot
-app.get("/api/dispatch/live-map-v74/:id",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
-  try{
-    const id=req.params.id;
-    const t=(await q(`select t.*,v.name vehicle_name,v.plate,u.name driver_name from trips t left join vehicles v on v.id=t.vehicle_id left join users u on u.id=t.driver_id where t.id=$1`,[id]))[0];
-    if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
-    const stops=await q(`select s.*,row_number() over(order by s.dispatch_position nulls last,s.stop_order)::int seq from trip_stops s where s.trip_id=$1 order by s.dispatch_position nulls last,s.stop_order`,[id]);
-    const gps=(await q(`select lat,lng,accuracy,created_at from gps_points where trip_id=$1 order by created_at desc limit 1`,[id]))[0]||null;
-    const age=gps?Math.max(0,Math.round((Date.now()-new Date(gps.created_at).getTime())/1000)):null;
-    const gps_status=!gps?"offline":age<=30?"online":age<=180?"stale":"offline";
-    const active=stops.find(x=>!x.delivered_at)||null;
-    let distance_km=null,eta_min=null;
-    if(gps&&active&&active.lat!=null&&active.lng!=null){
-      const rad=x=>x*Math.PI/180,R=6371,a=rad(Number(active.lat)-Number(gps.lat)),b=rad(Number(active.lng)-Number(gps.lng));
-      const z=Math.sin(a/2)**2+Math.cos(rad(Number(gps.lat)))*Math.cos(rad(Number(active.lat)))*Math.sin(b/2)**2;
-      distance_km=2*R*Math.asin(Math.sqrt(z)); eta_min=Math.max(1,Math.round(distance_km/45*60));
-    }
-    res.json({trip:t,stops,gps,gps_age_sec:age,gps_status,active_stop:active?{id:active.id,seq:active.seq,address:active.address,customer_name:active.customer_name}:null,distance_to_active_km:distance_km,eta_to_active_min:eta_min,server_time:new Date().toISOString()})
-  }catch(e){res.status(500).json({error:e.message})}
-});
-
-
 // V75 live alerts
 app.post("/api/dispatch/live-alerts-v75/check/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
