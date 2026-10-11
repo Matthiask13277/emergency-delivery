@@ -261,7 +261,7 @@ function compactEmptyDashboardMap(){
     const hasMarker=el.querySelector(".marker,.vehicle-marker,.route-marker,[data-lat]");
     if(!hasMarker && txt.length<120){
       el.classList.add("dashboard-map-empty");
-      el.innerHTML='<div class="empty-inner"><div class="empty-icon">⌖</div><h3>Live-Karte</h3><p>Noch keine Fahrzeuge oder Touren mit GPS-Daten vorhanden. Sobald ein Fahrzeug aktiv ist, wird die Position hier angezeigt.</p></div>';
+      el.innerHTML='<div class="empty-inner"><div class="empty-icon">⌖</div><h3>Live-Karte entfernt</h3><p>Die Live-Fahrerortung ist deaktiviert.</p></div>';
     }
   });
 }
