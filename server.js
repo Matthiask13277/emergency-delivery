@@ -247,7 +247,11 @@ app.delete("/api/employees/:id", auth, roles("Admin"), async (req,res)=>{
     await audit(req,"EMPLOYEE_DELETED",`${r[0].name} (${r[0].role})`);res.json({ok:true})
   }catch(e){res.status(500).json({error:e.message})}
 });
-function maps(origin,dest,stops=[]){return "https://www.google.com/maps/dir/?api=1&origin="+encodeURIComponent(origin)+"&destination="+encodeURIComponent(dest)+(stops.length?"&waypoints="+encodeURIComponent(stops.join("|")):"")}
+function maps(origin,dest,stops=[]){
+  const clean=x=>String(x||"").trim();
+  const validStops=(stops||[]).map(clean).filter(Boolean).filter((x,i,a)=>x!==clean(origin)&&x!==clean(dest)&&a.indexOf(x)===i);
+  return "https://www.google.com/maps/dir/?api=1&origin="+encodeURIComponent(clean(origin))+"&destination="+encodeURIComponent(clean(dest))+"&travelmode=driving"+(validStops.length?"&waypoints="+encodeURIComponent(validStops.join("|")):"");
+}
 
 app.get("/api/health",async(req,res)=>{try{await q("select 1");res.json({ok:true})}catch(e){res.status(503).json({ok:false})}});
 app.post("/api/login",async(req,res)=>{const u=(await q("select id,username,name,role,password_hash,must_change_password,active from users where username=$1",[String(req.body.username||"").trim()]))[0];if(!u||u.active===false||!(await bcrypt.compare(String(req.body.password||""),u.password_hash)))return res.status(401).json({error:"Benutzername oder Passwort ist falsch"});await q("update users set last_seen_at=now() where id=$1",[u.id]);res.json({token:jwt.sign({id:u.id,name:u.name,role:u.role},JWT_SECRET,{expiresIn:global.__EMERGENCY_DESKTOP_MODE__?"30d":"12h"}),user:{id:u.id,username:u.username,name:u.name,role:u.role,must_change_password:!!u.must_change_password}})});
@@ -299,23 +303,26 @@ app.patch("/api/company-settings",auth,roles("Admin"),async(req,res)=>{
 app.post("/api/customers",auth,roles("Admin","Dispatcher"),async(req,res)=>{const r=await q("insert into customers(company,vat_id,address,city,email,phone) values($1,$2,$3,$4,$5,$6) returning *",[req.body.company,req.body.vatId,req.body.address,req.body.city,req.body.email,req.body.phone]);await audit(req,"CUSTOMER_CREATED",r[0].company);res.json(r[0])});
 app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const w=+req.body.weightKg||0;if(w>1000)return res.status(400).json({error:"Maximum 1,000 KG"});
+    const w=Number(req.body.weightKg)||0;if(w<0||w>1000)return res.status(400).json({error:"Gewicht muss zwischen 0 und 1.000 KG liegen"});
+    const pickupAddress=String(req.body.pickupAddress||"").trim();
+    const deliveryAddress=String(req.body.deliveryAddress||"").trim();
+    const route=String(req.body.route||[pickupAddress,deliveryAddress].filter(Boolean).join(" → ")).trim();
+    if(!pickupAddress||!deliveryAddress)return res.status(400).json({error:"Bitte Start- und Zieladresse getrennt angeben."});
     const n=await q("select 'TRIP-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(trip_number,'-',3) as int)),0)+1)::text,4,'0') n from trips");
-    const price=+req.body.priceNet||0;
+    const price=Number(req.body.priceNet)||0,pieces=Math.max(1,Number(req.body.pieces)||1);
     const r=await q("insert into trips(trip_number,customer_id,weight_kg,pieces,status,driver_id,vehicle_id,route,notes,price_net) values($1,$2,$3,$4,'Planned',$5,$6,$7,$8,$9) returning *",
-      [n[0].n,req.body.customerId,w,+req.body.pieces||1,req.body.driverId||null,req.body.vehicleId||null,req.body.route||"",req.body.notes||"",price]);
-    // Auftrag+ erzeugt damit zusätzlich einen echten Auftrag, damit der Datensatz
-    // auch in Auftrag 360° bearbeitet und für die Rechnungsakte verwendet werden kann.
+      [n[0].n,req.body.customerId,w,pieces,req.body.driverId||null,req.body.vehicleId||null,route,req.body.notes||"",price]);
+    await q("insert into trip_stops(trip_id,stop_order,address,customer_name) values($1,1,$2,$3)",[r[0].id,deliveryAddress,(req.body.customerName||"").trim()||null]);
     try{
       const ref="ORD-"+Date.now().toString(36).toUpperCase();
-      await q(`insert into orders(customer_id,reference,delivery_address,delivery_city,weight_kg,pieces,priority,price_net,status,planned_trip_id,planned_at)
+      await q(`insert into orders(customer_id,reference,pickup_address,delivery_address,weight_kg,pieces,priority,price_net,status,planned_trip_id,planned_at)
         values($1,$2,$3,$4,$5,$6,'normal',$7,'planned',$8,now())`,
-        [req.body.customerId,ref,req.body.route||"",req.body.route||"",w,+req.body.pieces||1,price,r[0].id]);
+        [req.body.customerId,ref,pickupAddress,deliveryAddress,w,pieces,price,r[0].id]);
     }catch(orderErr){
       console.warn("Auftrag+ order link:",String(orderErr));
-      return res.status(500).json({error:"Auftrag wurde erstellt, konnte aber nicht mit Auftrag 360° verknüpft werden: "+orderErr.message});
+      return res.status(500).json({error:"Auftrag wurde erstellt, konnte aber nicht mit dem Auftrag verknüpft werden: "+orderErr.message});
     }
-    await audit(req,"TRIP_CREATED",r[0].trip_number);res.json(r[0]);
+    await audit(req,"TRIP_CREATED",r[0].trip_number);res.status(201).json(r[0]);
   }catch(e){res.status(500).json({error:e.message||"Auftrag konnte nicht erstellt werden"})}
 });
 app.post("/api/tours/create",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
@@ -362,14 +369,18 @@ app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher","Accounting"),as
     const ids=Array.isArray(req.body.tripIds)?req.body.tripIds:[];
     if(!ids.length)return res.status(400).json({error:"Keine Aufträge ausgewählt"});
     const ts=await q(`select t.*,c.company,c.address customer_address,c.city customer_city,
-      coalesce(s.city,c.city) stop_city,coalesce(s.address,c.address) stop_address
+      coalesce(s.city,o.delivery_city,c.city) stop_city,
+      coalesce(s.address,o.delivery_address,c.address) stop_address,
+      o.pickup_address order_pickup_address,o.delivery_address order_delivery_address
       from trips t left join customers c on c.id=t.customer_id
+      left join orders o on o.planned_trip_id=t.id
       left join lateral (select city,address from trip_stops where trip_id=t.id order by coalesce(dispatch_position,stop_order),stop_order,id limit 1) s on true
       where t.id=any($1::uuid[])`,[ids]);
     const order=ts.sort((a,b)=>String(a.stop_city||"").localeCompare(String(b.stop_city||""),"de",{numeric:true,sensitivity:"base"}));
-    const origin=String(req.body.origin||"").trim()||String(order[0]?.stop_address||order[0]?.stop_city||"Milano");
-    const destination=String(req.body.destination||"").trim()||String(order[order.length-1]?.stop_address||order[order.length-1]?.stop_city||origin);
-    const waypoints=order.slice(0,-1).map(x=>x.stop_address||x.stop_city).filter(Boolean);
+    const origin=String(req.body.origin||"").trim()||String(order[0]?.order_pickup_address||order[0]?.stop_address||order[0]?.stop_city||"");
+    const destination=String(req.body.destination||"").trim()||String(order[order.length-1]?.order_delivery_address||order[order.length-1]?.stop_address||order[order.length-1]?.stop_city||origin);
+    if(!origin||!destination)return res.status(400).json({error:"Bitte eine vollständige Start- und Zieladresse eingeben."});
+    const waypoints=order.map(x=>x.order_delivery_address||x.stop_address||x.stop_city).filter(Boolean).filter((x,i,a)=>x!==origin&&x!==destination&&a.indexOf(x)===i);
     const url=maps(origin,destination,waypoints);
     await audit(req,"ROUTE_OPTIMIZED",order.map(x=>x.trip_number).join(","));
     res.json({ordered:order.map((x,i)=>({position:i+1,id:x.id,tripNumber:x.trip_number,customer:x.company,address:x.stop_address||x.customer_address,city:x.stop_city||x.customer_city})),mapsUrl:url});
@@ -458,12 +469,29 @@ app.patch("/api/invoices/:id",auth,roles("Admin","Accounting"),async(req,res)=>{
     res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting","Driver"),async(req,res)=>{
   try{
-    const d=(await q("select * from delivery_documents where id=$1",[req.params.id]))[0];
+    await q(`CREATE TABLE IF NOT EXISTS delivery_documents(
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      trip_id uuid UNIQUE REFERENCES trips(id) ON DELETE CASCADE,
+      document_number text UNIQUE NOT NULL,
+      issued_at timestamptz DEFAULT now(),
+      status text DEFAULT 'Open',
+      proof_complete boolean DEFAULT false
+    )`);
+    let d=(await q("select * from delivery_documents where id=$1 or trip_id=$1 limit 1",[req.params.id]))[0];
+    let t;
+    if(d){
+      t=(await q("select * from trips where id=$1",[d.trip_id]))[0];
+    }else{
+      t=(await q("select * from trips where id=$1",[req.params.id]))[0];
+      if(!t)return res.status(404).json({error:"Auftrag/Lieferschein nicht gefunden"});
+      const n=await q(`select 'DDT-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(document_number,'-',3) as int)),0)+1)::text,4,'0') n from delivery_documents`);
+      d=(await q("insert into delivery_documents(trip_id,document_number,proof_complete,status) values($1,$2,$3,$4) returning *",[t.id,n[0].n,t.status==="Delivered",t.status==="Delivered"?"Completed":"Open"]))[0];
+    }
     if(!d)return res.status(404).json({error:"Lieferschein nicht gefunden"});
-    const t=(await q("select * from trips where id=$1",[d.trip_id]))[0];
     if(!t)return res.status(404).json({error:"Zugehöriger Auftrag nicht gefunden"});
+    if(req.user.role==="Driver"&&String(t.driver_id)!==String(req.user.id))return res.status(403).json({error:"Dieser Lieferschein gehört nicht zu deiner zugewiesenen Fahrt."});
     const b=req.body||{};
     const customerId=b.customerId||t.customer_id;
     if(customerId && !(await q("select 1 from customers where id=$1",[customerId]))[0])return res.status(400).json({error:"Kunde nicht gefunden"});
@@ -475,15 +503,15 @@ app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting")
     const pickup=(b.pickupAddress||"").trim();
     const route=[pickup,address].filter(Boolean).join(" → ");
     const tr=(await q(`update trips set customer_id=$1,weight_kg=$2,pieces=$3,driver_id=$4,vehicle_id=$5,route=$6,notes=$7,updated_at=now() where id=$8 returning *`,
-      [customerId,weight,pieces,b.driverId||null,b.vehicleId||null,route,b.notes||null,t.id]))[0];
+      [customerId,weight,pieces,b.driverId===undefined?t.driver_id:(b.driverId||null),b.vehicleId===undefined?t.vehicle_id:(b.vehicleId||null),route,b.notes===undefined?t.notes:(b.notes||null),t.id]))[0];
     const stop=(await q("select * from trip_stops where trip_id=$1 order by stop_order limit 1",[t.id]))[0];
     if(stop){
-      await q(`update trip_stops set address=$1,customer_name=$2,planned_time=$3 where id=$4`,[address,b.customerName||null,b.plannedTime||null,stop.id]);
+      await q(`update trip_stops set address=$1,customer_name=$2,planned_time=$3 where id=$4`,[address,b.customerName===undefined?stop.customer_name:(b.customerName||null),b.plannedTime===undefined?stop.planned_time:(b.plannedTime||null),stop.id]);
     }else if(address){
       await q(`insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time) values($1,1,$2,$3,$4)`,[t.id,address,b.customerName||null,b.plannedTime||null]);
     }
     const status=b.status||d.status;
-    const updated=(await q("update delivery_documents set status=$1 where id=$2 returning *",[status,req.params.id]))[0];
+    const updated=(await q("update delivery_documents set status=$1 where id=$2 returning *",[status,d.id]))[0];
     // Keep the editable DDT address/note in sync with the linked Auftrag 360° record.
     await q("update orders set delivery_address=$1,pickup_address=$2,dispatch_note=$3,updated_at=now() where planned_trip_id=$4",[address,pickup,b.notes||null,t.id]).catch(()=>{});
     await audit(req,"DDT_UPDATED",updated.document_number);
