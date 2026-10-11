@@ -417,15 +417,15 @@ async function calDelete(id){if(!confirm('Termin wirklich löschen?'))return;awa
 function openNewOrderRoute(){
  const origin=document.getElementById("rtStart")?.value.trim(),destination=document.getElementById("rtEnd")?.value.trim();
  if(!origin||!destination)return alert("Bitte Start- und Zieladresse eingeben.");
- const url="https://www.google.com/maps/dir/?api=1&origin="+encodeURIComponent(origin)+"&destination="+encodeURIComponent(destination);
- window.open(url,"_blank","noopener,noreferrer")
+ const url="https://www.google.com/maps/dir/?api=1&origin="+encodeURIComponent(origin)+"&destination="+encodeURIComponent(destination)+"&travelmode=driving";
+ const win=window.open(url,"_blank");if(!win)window.location.href=url
 }
 async function trip(){
  const weight=Number(document.getElementById("w").value||0),priceNet=Number(document.getElementById("price").value||0),origin=document.getElementById("rtStart").value.trim(),destination=document.getElementById("rtEnd").value.trim();
  if(!origin||!destination)return alert("Bitte Start- und Zieladresse eingeben.");
  if(weight>1000)return alert("Maximal 1.000 KG");if(weight<0)return alert("Gewicht darf nicht negativ sein");if(priceNet<0)return alert("Preis darf nicht negativ sein");
  const route=origin+" → "+destination;
- await api("/api/trips",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customerId:document.getElementById("tc").value,weightKg:weight,route,driverId:document.getElementById("dr").value,vehicleId:document.getElementById("ve").value,pieces:Number(document.getElementById("pc").value||1),priceNet,notes:document.getElementById("nt").value})});
+ await api("/api/trips",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customerId:document.getElementById("tc").value,weightKg:weight,pickupAddress:origin,deliveryAddress:destination,route,driverId:document.getElementById("dr").value,vehicleId:document.getElementById("ve").value,pieces:Number(document.getElementById("pc").value||1),priceNet,notes:document.getElementById("nt").value})});
  await refreshState();view("dispatch")
 }
 async function createTour(){
