@@ -40,8 +40,10 @@ const requiredPermissions = [
   'android.permission.FOREGROUND_SERVICE_LOCATION'
 ];
 const missingPermissions = requiredPermissions.filter(permission => !hasPermission(manifest, permission));
-const serviceDeclared = /<service\\b[^>]*android:name="(?:\\.DriverLocationService|com\\.emergencydelivery\\.mobile\\.DriverLocationService)"[\\s\\S]*?<\\/service>/.test(manifest);
-const serviceHasLocationType = serviceDeclared && /<service\\b[^>]*android:name="(?:\\.DriverLocationService|com\\.emergencydelivery\\.mobile\\.DriverLocationService)"[\\s\\S]*?android:foregroundServiceType="location"/.test(manifest);
+const serviceTags = manifest.match(/<service\b[^>]*\/?\s*>/g) || [];
+const driverServiceTag = serviceTags.find(tag => tag.includes('android:name=".DriverLocationService"') || tag.includes('android:name="com.emergencydelivery.mobile.DriverLocationService"'));
+const serviceDeclared = Boolean(driverServiceTag);
+const serviceHasLocationType = Boolean(driverServiceTag && driverServiceTag.includes('android:foregroundServiceType="location"'));
 const pluginRegistered = activity.includes('registerPlugin(DriverLocationPlugin.class)');
 
 const sourceFiles = ['DriverLocationPlugin.java', 'DriverLocationService.java'];
