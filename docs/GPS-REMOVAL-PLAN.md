@@ -39,3 +39,22 @@ This is a review-only branch. Do not merge or deploy to `main` until the diff an
 - Existing historical GPS data is untouched.
 - Server and frontend syntax/build checks pass.
 - Review all changes and test on a preview deployment before merging.
+
+
+## Follow-up audit (2026-10-11)
+
+The first code pass is not yet ready to merge. A second server-side audit found additional GPS entry points and consumers that the initial removal did not cover:
+
+- Additional collection endpoints: `POST /api/gps` and `POST /api/driver/live-gps`.
+- Offline sync accepts `type: "gps"` and writes to `gps_points` / trip current coordinates. This handler must reject/remove GPS actions without disrupting status sync.
+- Control-center endpoints expose driver coordinates and GPS status; the live fleet/control-center UI consumers must be mapped before removing these payload fields.
+- Stale-GPS alerts and several dashboard/report routes read GPS history. GPS-only alerts and tracking panels should be removed, while route/ETA logic must be preserved or deliberately switched to stop-based ETA.
+- Some proof/arrival flows update trip coordinates and may rely on geofencing. These are a separate product behavior from continuous driver tracking and must not be deleted without verifying the proof and stop-completion flow.
+- The HTML still has a leftover live-map placeholder/navigation fragment to fully clean up.
+
+## Validation status
+
+- Production branch `main`: unchanged.
+- Review branch: partial changes committed.
+- Runtime/build/regression tests: not run in this environment.
+- Do not merge/deploy yet. Further removal is needed and a real preview test is required before approval.
