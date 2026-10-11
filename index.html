@@ -588,7 +588,7 @@ async function deleteInvoice(id){const i=S.invoices.find(x=>String(x.id)===Strin
       const drivers=(S.users||[]).filter(u=>u.role==="Driver"&&u.active!==false);
       const select='<select id="dispatch-driver-'+String(t.id).replace(/[^a-zA-Z0-9_-]/g,"")+'" aria-label="Fahrer für '+esc(t.trip_number||"Auftrag")+'" '+(!canAssign?'disabled':'')+'><option value="">Nicht zugewiesen</option>'+drivers.map(u=>'<option value="'+esc(u.id)+'" '+(String(u.id)===String(t.driver_id||"")?'selected':'')+'>'+esc(u.name)+'</option>').join("")+'</select>';
       const id=String(t.id).replace(/[^a-zA-Z0-9_-]/g,"");
-      return '<tr><td><b>'+esc(t.trip_number||"—")+'</b></td><td>'+esc(t.route||"—")+'</td><td>'+esc(t.status||"Offen")+'</td><td>'+ (driver?esc(driver.name):'<span class="muted">Nicht zugewiesen</span>')+'</td><td><div class="row">'+(canAssign?select+'<button class="btn primary" onclick="quickAssignTrip(\''+id+'\')">Zuweisen</button>':'')+'<button class="btn secondary" onclick="editTrip(\''+t.id+'\')">Bearbeiten</button></div></td></tr>';
+      return '<tr><td><b>'+esc(t.trip_number||"—")+'</b></td><td>'+esc(t.route||"—")+'</td><td>'+esc(t.status||"Offen")+'</td><td>'+ (driver?esc(driver.name):'<span class="muted">Nicht zugewiesen</span>')+'</td><td><div class="row">'+(canAssign?select+'<button class="btn primary" onclick="quickAssignTrip(\''+id+'\')">Zuweisen</button>':'')+(S.user.role==="Driver"?"":'<button class="btn secondary" onclick="editTrip(\''+t.id+'\')">Bearbeiten</button>')+'</div></td></tr>';
     }).join("")+'</tbody></table>';
 }
 async function quickAssignTrip(id){
