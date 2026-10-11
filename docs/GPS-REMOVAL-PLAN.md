@@ -78,3 +78,20 @@ Still outstanding and requiring careful consumer review:
 - Some stop/proof handlers accept coordinates or update trip location fields; these should be separated from continuous tracking without breaking proof capture or stop completion.
 - The trip PATCH API still permits current_lat/current_lng; remove these from driver-editable fields after confirming no route-planning consumer depends on that patch.
 - No runtime tests/build have been run; this branch is not ready to merge/deploy.
+
+
+## Third cleanup pass (2026-10-11)
+
+Completed on the review branch:
+
+- Trip PATCH no longer accepts `current_lat` / `current_lng` from drivers or admins; the authorization guard was updated consistently.
+- Removed the dedicated `GET /api/dispatch/live-map-v74/:id` endpoint, which returned the last GPS point and GPS-derived ETA.
+- Removed current driver coordinates from the `GET /api/fleet/status` response while retaining fleet/status and stop-count fields.
+
+Important remaining work:
+
+- Other legacy endpoints still expose GPS status and coordinates, including `/api/control-center/trip/:id/live`, `/api/control-center/trip/:id/live-full`, the heartbeat endpoint, and stale-GPS alert checks.
+- Geofence-check endpoints explicitly require a submitted location; disable these if the product should no longer transmit any driver location, but confirm stop completion is not wired to them.
+- Delivery-proof handlers accept proof coordinates and may store them with the proof record. Photo/signature proof should remain; decide whether to remove proof-coordinate capture separately.
+- Historical GPS table and schema are intentionally untouched; no records have been deleted.
+- Runtime/build/regression tests remain unrun. Do not merge or deploy until the remaining consumers are reviewed and a preview passes.
