@@ -3624,15 +3624,13 @@ v112Timer.unref?.();
 // CREATE INDEX IF NOT EXISTS idx_trip_event_links_trip ON trip_event_links(trip_id,created_at DESC);
 // // // V113 automatic trip/driver event notifications
 async function v113SweepTrips(){
-  const r=await q(`select t.id,t.trip_number,t.status,t.live_status,t.gps_status,t.driver_id,
+  const r=await q(`select t.id,t.trip_number,t.status,t.live_status,t.driver_id,
     u.name driver_name,v.name vehicle_name,v.plate
     from trips t left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id
     where t.status is not null order by t.updated_at desc limit 500`);
   for(const t of r.rows){
     const events=[];
     if(t.status)events.push(["status:"+t.status,t.status,`Tour ${t.status}`,`Tour ${t.trip_number} ist jetzt ${t.status}.`,String(t.status).toLowerCase().includes("deliver")?"info":"info"]);
-    if(t.gps_status==="offline")events.push(["gps:offline","offline","GPS offline",`GPS von ${t.driver_name||"Fahrer"} / ${t.trip_number} ist offline.`,"warning"]);
-    if(t.gps_status==="stale")events.push(["gps:stale","stale","GPS veraltet",`GPS von ${t.driver_name||"Fahrer"} / ${t.trip_number} ist veraltet.`,"warning"]);
     for(const e of events){
       const key=`trip:${t.id}:${e[0]}`;
       const exists=await q(`select id from trip_event_links where event_key=$1`,[key]);
@@ -4523,7 +4521,7 @@ app.get("/api/customer-portal-v128/document/:invoiceNumber",v127PortalAuth,async
 });
 app.get("/api/tracking-v128/:token",async(req,res)=>{
   try{
-    const r=await q(`select t.id,t.trip_number,t.status,t.route,t.current_lat,t.current_lng,t.updated_at,
+    const r=await q(`select t.id,t.trip_number,t.status,t.route,t.updated_at,
       c.company,t.price_net,
       coalesce(json_agg(json_build_object('order',s.stop_order,'address',s.address,'planned_time',s.planned_time,
       'planned_arrival_at',s.planned_arrival_at,'actual_arrival_at',s.actual_arrival_at,
@@ -4534,7 +4532,7 @@ app.get("/api/tracking-v128/:token",async(req,res)=>{
       where t.id=$1 group by t.id,c.company`,[req.params.token]);
     if(!r.rows.length) return res.status(404).json({error:"Tracking nicht gefunden"});
     const x=r.rows[0]; res.json({trip_number:x.trip_number,status:x.status,company:x.company,
-      route:x.route,current_lat:x.current_lat,current_lng:x.current_lng,updated_at:x.updated_at,stops:x.stops});
+      route:x.route,updated_at:x.updated_at,stops:x.stops});
   }catch(e){res.status(500).json({error:e.message})}
 });
 
@@ -4581,7 +4579,7 @@ app.post("/api/customer-portal-v129/document-notification-sweep",auth,roles("Adm
 app.get("/api/customer-portal-v130/delivery-proof/:tripId",v127PortalAuth,async(req,res)=>{
  try{
   const r=await q(`select t.id,t.trip_number,t.status,t.signature_data,t.signature_at,t.delivery_photo,
-      t.current_lat,t.current_lng,t.updated_at,c.company,
+      t.updated_at,c.company,
       coalesce(json_agg(json_build_object('id',s.id,'order',s.stop_order,'address',s.address,
       'planned_time',s.planned_time,'planned_arrival_at',s.planned_arrival_at,
       'actual_arrival_at',s.actual_arrival_at,'arrival_variance_min',s.arrival_variance_min,
@@ -4610,7 +4608,7 @@ app.get("/api/customer-portal-v130/delivery-proof/:tripId/pdf",v127PortalAuth,as
   <table><tr><th>Stop</th><th>Adresse</th><th>Geplant</th><th>Zugestellt</th><th>Abweichung</th></tr>
   ${stops.rows.map(x=>`<tr><td>${x.stop_order}</td><td>${x.address||""}</td><td>${x.planned_arrival_at||x.planned_time||""}</td><td>${x.delivered_at||""}</td><td>${x.deviation_note||""}</td></tr>`).join("")}</table>
   <div class="box"><b>Digitale Unterschrift:</b><br>${t.signature_data?'<img style="max-width:500px;max-height:180px" src="'+t.signature_data+'">':"Nicht vorhanden"}<br>
-  <b>Signiert:</b> ${t.signature_at||"—"}<br><b>GPS:</b> ${t.current_lat||"—"}, ${t.current_lng||"—"}<br>
+  <b>Signiert:</b> ${t.signature_at||"—"}<br>
   <b>Lieferfoto:</b> ${t.delivery_photo?'<br><img style="max-width:500px;max-height:300px" src="'+t.delivery_photo+'">':"Nicht vorhanden"}</div></body></html>`);
  }catch(e){res.status(500).json({error:e.message})}
 });
