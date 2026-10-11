@@ -279,8 +279,8 @@ async function ensureDeliveryDocuments(){
 }
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
 q("select id,name,role from users order by name"),q("select * from customers order by company"),q(req.user.role==="Driver"?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",req.user.role==="Driver"?[req.user.id]:[]),q("select * from vehicles order by name"),
-q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
-res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
+q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select * from company_settings where id=1")]);
+res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,company:company[0]||{}})});
 
 app.get("/api/company-settings",auth,async(req,res)=>{
   try{await ensureCompanySettings();const r=await q("select * from company_settings where id=1");res.json(r[0]||{});}catch(e){res.status(500).json({error:e.message})}
@@ -2902,7 +2902,7 @@ app.get("/api/planning/route/:tripId/map-data",auth,roles("Admin","Dispatcher","
     const stops=await q(`select id,stop_order,dispatch_position,address,customer_name,lat,lng,route_eta_at,service_minutes,time_window_start,time_window_end
       from trip_stops where trip_id=$1 order by coalesce(dispatch_position,stop_order),stop_order`,[t.id]);
     const points=[];
-    if(t.current_lat!=null&&t.current_lng!=null)points.push({type:"driver",lat:Number(t.current_lat),lng:Number(t.current_lng),label:"Fahrer"});
+    
     for(const st of stops)if(st.lat!=null&&st.lng!=null)points.push({type:"stop",lat:Number(st.lat),lng:Number(st.lng),label:st.customer_name||st.address,stop_order:st.dispatch_position||st.stop_order,id:st.id,eta:st.route_eta_at});
     res.json({trip:t,stops,points,route:{distance_km:Number(t.route_total_distance_km||t.route_distance_km||0),duration_min:Number(t.route_total_duration_min||t.route_duration_min||0),eta_end_at:t.route_eta_end_at||t.eta_end_at||null,source:t.route_provider||"heuristic"}})
   }catch(e){res.status(500).json({error:e.message})}
