@@ -553,6 +553,7 @@ async function previewPdf(type,id){
 function inv(id){const i=S.invoices.find(x=>x.id===id);downloadPdf("/api/documents/invoice/"+id+"/pdf",i?.invoice_number||"Rechnung")}
 function ddt(id){const t=S.trips.find(x=>x.id===id);downloadPdf("/api/documents/ddt/"+id+"/pdf",t?.trip_number||"Lieferschein")}
 async function editDeliveryNote(tripId){
+ if(["driver","fahrer"].includes(String(S?.user?.role||"").trim().toLowerCase())){alert("Fahrer dürfen Lieferscheine nicht bearbeiten. Bitte wende dich an den Admin.");return;}
  const t=(S.trips||[]).find(x=>String(x.id)===String(tripId));if(!t)return alert('Auftrag nicht gefunden.');
  const parts=String(t.route||'').split(' → '),pickup=parts.length>1?parts[0]:'',delivery=parts.length>1?parts.slice(1).join(' → '):(t.route||'');
  modal('<h2>Lieferschein bearbeiten</h2><p class="muted">'+esc(t.trip_number||'')+'</p><div class="form form-2">'+
