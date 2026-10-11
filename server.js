@@ -506,12 +506,12 @@ app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting",
       [customerId,weight,pieces,b.driverId===undefined?t.driver_id:(b.driverId||null),b.vehicleId===undefined?t.vehicle_id:(b.vehicleId||null),route,b.notes===undefined?t.notes:(b.notes||null),t.id]))[0];
     const stop=(await q("select * from trip_stops where trip_id=$1 order by stop_order limit 1",[t.id]))[0];
     if(stop){
-      await q(`update trip_stops set address=$1,customer_name=$2,planned_time=$3 where id=$4`,[address,b.customerName||null,b.plannedTime||null,stop.id]);
+      await q(`update trip_stops set address=$1,customer_name=$2,planned_time=$3 where id=$4`,[address,b.customerName===undefined?stop.customer_name:(b.customerName||null),b.plannedTime===undefined?stop.planned_time:(b.plannedTime||null),stop.id]);
     }else if(address){
       await q(`insert into trip_stops(trip_id,stop_order,address,customer_name,planned_time) values($1,1,$2,$3,$4)`,[t.id,address,b.customerName||null,b.plannedTime||null]);
     }
     const status=b.status||d.status;
-    const updated=(await q("update delivery_documents set status=$1 where id=$2 returning *",[status,req.params.id]))[0];
+    const updated=(await q("update delivery_documents set status=$1 where id=$2 returning *",[status,d.id]))[0];
     // Keep the editable DDT address/note in sync with the linked Auftrag 360° record.
     await q("update orders set delivery_address=$1,pickup_address=$2,dispatch_note=$3,updated_at=now() where planned_trip_id=$4",[address,pickup,b.notes||null,t.id]).catch(()=>{});
     await audit(req,"DDT_UPDATED",updated.document_number);
