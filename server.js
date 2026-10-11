@@ -1053,20 +1053,9 @@ app.get("/api/fleet/trip/:id/route",auth,roles("Admin","Dispatcher","Driver"),as
   }catch(e){res.status(500).json({error:e.message});}
 });
 
+// GPS-based geofence checks are disabled; drivers can mark arrival manually.
 app.post("/api/driver/stops/:id/geofence-check",auth,roles("Driver"),async(req,res)=>{
-  try{
-    const st=(await q(`select s.*,t.driver_id from trip_stops s join trips t on t.id=s.trip_id where s.id=$1`,[req.params.id]))[0];
-    if(!st)return res.status(404).json({error:"Stop nicht gefunden"});
-    if(st.driver_id!==req.user.id)return res.status(403).json({error:"Nicht deine Tour"});
-    const lat=Number(req.body.lat),lng=Number(req.body.lng),targetLat=Number(req.body.targetLat),targetLng=Number(req.body.targetLng);
-    if(![lat,lng,targetLat,targetLng].every(Number.isFinite))return res.status(400).json({error:"Ungültige Koordinaten"});
-    const R=6371000,rad=x=>x*Math.PI/180;
-    const dLat=rad(targetLat-lat),dLng=rad(targetLng-lng);
-    const a=Math.sin(dLat/2)**2+Math.cos(rad(lat))*Math.cos(rad(targetLat))*Math.sin(dLng/2)**2;
-    const distance=Math.round(2*R*Math.asin(Math.sqrt(a)));
-    const radius=Math.max(50,Number(req.body.radius||150));
-    res.json({inside:distance<=radius,distance_m:distance,radius_m:radius});
-  }catch(e){res.status(500).json({error:e.message});}
+  res.status(410).json({error:"GPS-Geofencing ist deaktiviert. Bitte Ankunft manuell bestätigen."});
 });
 
 
@@ -1700,8 +1689,7 @@ app.get("/api/planning/optimization/:date",auth,roles("Admin","Dispatcher"),asyn
 // V30: live control center feed
 app.get("/api/control-center/live",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const rows=await q(`select t.id,t.trip_number,t.status,t.live_status,t.current_lat,t.current_lng,
-      t.last_driver_ping_at,t.eta_at,t.eta_minutes,t.route_distance_km,t.route_duration_min,
+    const rows=await q(`select t.id,t.trip_number,t.status,t.eta_at,t.eta_minutes,t.route_distance_km,t.route_duration_min,
       t.assigned_vehicle_slot,t.priority,u.name driver_name,v.name vehicle_name,v.plate,
       c.company customer_company
       from trips t left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id
@@ -1716,16 +1704,15 @@ app.get("/api/control-center/live",auth,roles("Admin","Dispatcher"),async(req,re
     const byTrip={};for(const st of stopRows)(byTrip[st.trip_id]??=[]).push(st);
     const now=Date.now();
     res.json({server_time:new Date().toISOString(),vehicles:rows.map(x=>({
-      ...x,stale_seconds:x.last_driver_ping_at?Math.max(0,Math.round((now-new Date(x.last_driver_ping_at).getTime())/1000)):null,
-      stops:byTrip[x.id]||[]
+      ...x,stops:byTrip[x.id]||[]
     }))});
   }catch(e){res.status(500).json({error:e.message});}
 });
 
 app.post("/api/control-center/ping",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const r=(await q(`update trips set live_status='online',last_driver_ping_at=now()
-      where id=$1 returning id,trip_number,last_driver_ping_at`,[req.body.tripId]))[0];
+    const r=(await q(`update trips set live_status='online'
+      where id=$1 returning id,trip_number,live_status`,[req.body.tripId]))[0];
     if(!r)return res.status(404).json({error:"Tour nicht gefunden"});
     res.json(r);
   }catch(e){res.status(500).json({error:e.message});}
@@ -1743,7 +1730,7 @@ app.get("/api/config/maps",auth,async(req,res)=>{
 // V32: map route feed and stop coordinates
 app.get("/api/control-center/map-data",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const trips=await q(`select t.id,t.trip_number,t.assigned_vehicle_slot,t.status,t.priority,t.current_lat,t.current_lng,
+    const trips=await q(`select t.id,t.trip_number,t.assigned_vehicle_slot,t.status,t.priority,
       t.route_polyline,t.map_color,t.eta_minutes,u.name driver_name,v.name vehicle_name
       from trips t left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id
       where t.status not in ('Delivered','Cancelled')
@@ -2915,67 +2902,37 @@ app.get("/api/config/maps",auth,roles("Admin","Dispatcher","Driver"),async(req,r
 });
 
 
-// V55 live driver tracking snapshot
+// Control-center trip snapshot: route ETA and stops only; no driver location data.
 app.get("/api/control-center/trip/:id/live",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   try{
-    const t=(await q(`select t.*,u.name driver_name,v.name vehicle_name from trips t
+    const t=(await q(`select t.id,t.trip_number,t.status,t.driver_id,t.vehicle_id,t.eta_at,t.eta_minutes,t.route_eta_end_at,t.route_total_duration_min,u.name driver_name,v.name vehicle_name from trips t
       left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id where t.id=$1`,[req.params.id]))[0];
     if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
-    const stop=(await q(`select * from trip_stops where trip_id=$1 and delivered_at is null order by coalesce(dispatch_position,stop_order),stop_order limit 1`,[t.id]))[0]||null;
-    const gpsAt=t.gps_last_at||t.last_driver_ping_at||null;
-    const age=gpsAt?Math.max(0,Math.round((Date.now()-new Date(gpsAt).getTime())/1000)):null;
-    const status=age==null||age>180?"offline":age>60?"stale":"online";
-    await q("update trips set gps_status=$1,gps_last_at=coalesce(gps_last_at,last_driver_ping_at) where id=$2",[status,t.id]);
-    res.json({trip:t,driver:{id:t.driver_id,name:t.driver_name},vehicle:{id:t.vehicle_id,name:t.vehicle_name},gps:{lat:t.current_lat,lng:t.current_lng,accuracy:t.gps_last_accuracy,at:gpsAt,age_seconds:age,status},active_stop:stop,eta:{at:t.eta_at||t.route_eta_end_at||null,minutes:t.eta_minutes||t.last_eta_minutes||null}})
+    const stop=(await q(`select id,trip_id,stop_order,dispatch_position,address,customer_name,status,planned_time,route_arrival_at,delivered_at from trip_stops where trip_id=$1 and delivered_at is null order by coalesce(dispatch_position,stop_order),stop_order limit 1`,[t.id]))[0]||null;
+    res.json({trip:t,driver:{id:t.driver_id,name:t.driver_name},vehicle:{id:t.vehicle_id,name:t.vehicle_name},active_stop:stop,eta:{at:t.eta_at||t.route_eta_end_at||null,minutes:t.eta_minutes||t.route_total_duration_min||null}});
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/control-center/trip/:id/heartbeat",auth,roles("Driver","Admin","Dispatcher"),async(req,res)=>{
   try{
-    const lat=req.body.lat!=null?Number(req.body.lat):null,lng=req.body.lng!=null?Number(req.body.lng):null,acc=req.body.accuracy!=null?Number(req.body.accuracy):null;
-    const r=await q(`update trips set current_lat=coalesce($1,current_lat),current_lng=coalesce($2,current_lng),
-      gps_last_accuracy=coalesce($3,gps_last_accuracy),gps_last_at=now(),last_driver_ping_at=now(),gps_status='online' where id=$4 returning *`,[lat,lng,acc,req.params.id]);
-    if(!r.length)return res.status(404).json({error:"Tour nicht gefunden"});res.json({ok:true,trip:r[0]})
+    const r=await q(`update trips set live_status='online' where id=$1 returning id,status,live_status,eta_at,eta_minutes,route_eta_end_at`,[req.params.id]);
+    if(!r.length)return res.status(404).json({error:"Tour nicht gefunden"});
+    res.json({ok:true,trip:r[0]});
   }catch(e){res.status(400).json({error:e.message})}
 });
 
 
-app.get("/api/driver/live-session",auth,roles("Driver","Admin"),async(req,res)=>{
-  try{
-    const driverId=req.user.role==="Driver"?req.user.id:req.query.driver_id;
-    const t=(await q(`select t.*,v.name vehicle_name from trips t left join vehicles v on v.id=t.vehicle_id
-      where t.driver_id=$1 and t.status in ('Planned','In Transit') order by t.planned_start_at nulls last limit 1`,[driverId]))[0]||null;
-    res.json({active:t})
-  }catch(e){res.status(500).json({error:e.message})}
-});
-
-
-// V57 unified live tracking + ETA refresh + GPS alert state
+// Unified trip snapshot using planned route/stop ETA only; no GPS-derived status.
 app.get("/api/control-center/trip/:id/live-full",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   try{
-    const t=(await q(`select t.*,u.name driver_name,v.name vehicle_name from trips t left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id where t.id=$1`,[req.params.id]))[0];
+    const t=(await q(`select t.id,t.trip_number,t.status,t.driver_id,t.vehicle_id,t.eta_at,t.eta_minutes,t.last_eta_minutes,t.route_eta_end_at,t.route_total_duration_min,t.route_total_distance_km,t.route_provider,u.name driver_name,v.name vehicle_name from trips t left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id where t.id=$1`,[req.params.id]))[0];
     if(!t)return res.status(404).json({error:"Tour nicht gefunden"});
-    const stops=await q(`select * from trip_stops where trip_id=$1 order by coalesce(dispatch_position,stop_order),stop_order`,[t.id]);
+    const stops=await q(`select id,trip_id,stop_order,dispatch_position,address,customer_name,status,planned_time,planned_arrival_at,route_arrival_at,delivered_at from trip_stops where trip_id=$1 order by coalesce(dispatch_position,stop_order),stop_order`,[t.id]);
     const active=stops.find(x=>!x.delivered_at)||null;
-    const gpsAt=t.gps_last_at||t.last_driver_ping_at||null;
-    const age=gpsAt?Math.max(0,Math.round((Date.now()-new Date(gpsAt).getTime())/1000)):null;
-    const gpsStatus=age==null||age>180?"offline":age>60?"stale":"online";
-    let etaMin=null;
-    if(active&&t.current_lat!=null&&t.current_lng!=null&&active.lat!=null&&active.lng!=null){
-      const R=6371,la1=Number(t.current_lat)*Math.PI/180,la2=Number(active.lat)*Math.PI/180,dl=(Number(active.lat)-Number(t.current_lat))*Math.PI/180,dg=(Number(active.lng)-Number(t.current_lng))*Math.PI/180;
-      const x=Math.sin(dl/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dg/2)**2,km=R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));etaMin=Math.max(1,Math.round(km/45*60));
-      await q("update trips set eta_minutes=$1,eta_at=now()+($1||' minutes')::interval,last_eta_at=now() where id=$2",[etaMin,t.id]);
-    }
-    let alert=null;
-    if(gpsStatus==="offline"||gpsStatus==="stale"){
-      alert={type:"gps",severity:gpsStatus==="offline"?"critical":"warning",message:`GPS ${gpsStatus==="offline"?"ausgefallen":"veraltet"}: ${age==null?"keine Position":age+" Sekunden alt"}`};
-      await q("update trips set live_alert_state=$1 where id=$2",[alert.severity,t.id]);
-    }else await q("update trips set live_alert_state='normal' where id=$1",[t.id]);
-    res.json({trip:t,gps:{lat:t.current_lat,lng:t.current_lng,accuracy:t.gps_last_accuracy,at:gpsAt,age_seconds:age,status:gpsStatus},active_stop:active,stops,eta:{minutes:etaMin||t.eta_minutes||null,at:t.eta_at||null},alert});
+    res.json({trip:t,driver:{id:t.driver_id,name:t.driver_name},vehicle:{id:t.vehicle_id,name:t.vehicle_name},stops,active_stop:active,eta:{at:t.eta_at||t.route_eta_end_at||active?.route_arrival_at||null,minutes:t.eta_minutes||t.last_eta_minutes||t.route_total_duration_min||null}});
   }catch(e){res.status(500).json({error:e.message})}
 });
 
 
-// V58 live alert engine: GPS, ETA, geofence and stop movement
 function v58DistKm(lat1,lng1,lat2,lng2){
   const R=6371,la1=Number(lat1)*Math.PI/180,la2=Number(lat2)*Math.PI/180,dl=(Number(lat2)-Number(lat1))*Math.PI/180,dg=(Number(lng2)-Number(lng1))*Math.PI/180;
   const x=Math.sin(dl/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dg/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
@@ -3687,13 +3644,13 @@ app.post("/api/driver/stop-v83/:id/arrive",auth,roles("Driver"),async(req,res)=>
 });
 app.post("/api/driver/stop-v83/:id/deliver",auth,roles("Driver"),async(req,res)=>{
   try{
-    const {kg,pieces,note,photo,signature,lat,lng,accuracy}=req.body||{};
+    const {kg,pieces,note,photo,signature}=req.body||{};
     const stop=(await q(`select s.*,t.id trip_id,t.driver_id from trip_stops s join trips t on t.id=s.trip_id where s.id=$1 and t.driver_id=$2`,[req.params.id,req.user.id]))[0];
     if(!stop)return res.status(404).json({error:"Stopp nicht gefunden"});
     if(!(Number(kg)>=0)||!(Number(pieces)>=0))return res.status(400).json({error:"KG und Stück müssen gültig sein"});
     const r=await q(`update trip_stops set delivered_kg=$1,delivered_pieces=$2,delivery_note=$3,delivery_photo=$4,signature_data=$5,
-      proof_lat=$6,proof_lng=$7,proof_accuracy=$8,proof_at=now(),delivered_at=now() where id=$9 returning *`,
-      [kg,pieces,note||"",photo||null,signature||null,lat||null,lng||null,accuracy||null,req.params.id]);
+      proof_at=now(),delivered_at=now() where id=$6 returning *`,
+      [kg,pieces,note||"",photo||null,signature||null,req.params.id]);
     const open=await q(`select count(*)::int n from trip_stops where trip_id=$1 and delivered_at is null`,[stop.trip_id]);
     if(open[0].n===0)await q(`update trips set status='Delivered',actual_finished_at=now(),live_status='offline',updated_at=now() where id=$1`,[stop.trip_id]);
     await audit(req,"V83_STOP_DELIVERED",req.params.id);
