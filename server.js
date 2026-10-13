@@ -100,6 +100,13 @@ async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
 }
 
+// Keep delivery-proof fields used by PATCH /api/trips/:id compatible with PostgreSQL.
+async function ensureTripSignatureColumns(){
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS signature_data text`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS signature_at timestamptz`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS delivery_photo text`);
+}
+
 async function ensureV183Columns(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km numeric DEFAULT 0`);
