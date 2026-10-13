@@ -97,9 +97,8 @@ app.get("/service-worker.js",(req,res)=>{res.setHeader("Content-Type","applicati
 app.use(desktopCloudProxy);
 
 async function ensureV183Columns(){
-  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km numeric DEFAULT 0`);
-  // Dispatch and control-center queries expect this column.
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km numeric DEFAULT 0`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_name text`);
