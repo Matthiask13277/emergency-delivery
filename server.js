@@ -96,10 +96,13 @@ app.get("/manifest.json",(req,res)=>{res.setHeader("Content-Type","application/m
 app.get("/service-worker.js",(req,res)=>{res.setHeader("Content-Type","application/javascript; charset=utf-8");res.setHeader("Service-Worker-Allowed","/");res.setHeader("Cache-Control","no-cache");res.sendFile(path.join(__dirname,"service-worker.js"));});
 app.use(desktopCloudProxy);
 
-async function ensureV183Columns(){
-  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km numeric DEFAULT 0`);
-  // Dispatch and control-center queries expect this column.
+async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
+}
+
+async function ensureV183Columns(){
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS distance_km numeric DEFAULT 0`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS customer_number text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS contact_name text`);
@@ -187,9 +190,25 @@ app.get("/sync.js",(req,res)=>res.sendFile(path.join(__dirname,"sync.js")));
 app.get("/desktop-launch.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-launch.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
-// Defer local schema work until after the HTTP listener is bound. This keeps
-// the desktop shell reachable even if PGlite startup or an old local database
-// takes a long time.
+// Run the priority migration independently first, with retries and explicit logs.
+// This makes the exact database failure visible instead of hiding it inside the
+// larger schema initializer. The IF NOT EXISTS migration is safe to repeat.
+Promise.resolve().then(async()=>{
+  let lastError;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      await ensureTripsPriorityColumn();
+      console.log('trips.priority schema check succeeded');
+      lastError=null;
+      break;
+    }catch(err){
+      lastError=err;
+      console.error(`trips.priority schema attempt ${attempt}/3 failed:`,err);
+      if(attempt<3) await new Promise(resolve=>setTimeout(resolve,attempt*2000));
+    }
+  }
+  if(lastError) throw lastError;
+}).catch(err=>console.error('CRITICAL: trips.priority migration failed after retries:',err));
 Promise.resolve().then(()=>ensureV183Columns()).catch(err=>console.error('V183 schema init failed:',err));
 Promise.resolve().then(()=>ensureCompanySettings()).catch(err=>console.error('Company settings init failed:',err));
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
