@@ -187,11 +187,24 @@ app.get("/sync.js",(req,res)=>res.sendFile(path.join(__dirname,"sync.js")));
 app.get("/desktop-launch.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-launch.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
-// Defer local schema work until after the HTTP listener is bound. This keeps
-// the desktop shell reachable even if PGlite startup or an old local database
-// takes a long time.
-Promise.resolve().then(()=>ensureV183Columns()).catch(err=>console.error('V183 schema init failed:',err));
-Promise.resolve().then(()=>ensureCompanySettings()).catch(err=>console.error('Company settings init failed:',err));
+// Defer schema work until after the HTTP listener is bound. Retry transient
+// database startup failures; the ALTER/CREATE statements use IF NOT EXISTS.
+async function runSchemaInitWithRetry(label, init, attempts=3){
+  for(let attempt=1;attempt<=attempts;attempt++){
+    try{
+      await init();
+      console.log(`${label} schema init completed (attempt ${attempt}/${attempts}).`);
+      return true;
+    }catch(err){
+      console.error(`${label} schema init failed (attempt ${attempt}/${attempts}):`,err);
+      if(attempt<attempts) await new Promise(resolve=>setTimeout(resolve,2000*attempt));
+    }
+  }
+  console.error(`${label} schema init gave up after ${attempts} attempts.`);
+  return false;
+}
+Promise.resolve().then(()=>runSchemaInitWithRetry('V183',ensureV183Columns));
+Promise.resolve().then(()=>runSchemaInitWithRetry('Company settings',ensureCompanySettings));
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:true,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:false,operations:false,notifications:true}};
 const PERM_PATHS=[
