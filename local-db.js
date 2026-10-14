@@ -84,9 +84,16 @@ async function queryPostgresWithRetry(text,params){
     try{
       return await pgPool.query(text,params);
     }catch(err){
-      // ECONNREFUSED means no TCP connection was established, so this query
-      // was not executed by PostgreSQL and can safely be retried.
-      if(err.code!=="ECONNREFUSED" || attempt>=CONNECTION_RETRY_DELAYS_MS.length) throw err;
+      // Retry only failures that prove no PostgreSQL query was executed:
+      // ECONNREFUSED, ETIMEDOUT, or pg-pool's connection-acquisition timeout.
+      // Do not retry generic socket resets or server/query errors because the
+      // database may already have executed a non-idempotent statement.
+      const message=String(err && err.message || "").toLowerCase();
+      const connectionWasNotEstablished=
+        err.code==="ECONNREFUSED" ||
+        err.code==="ETIMEDOUT" ||
+        message.includes("timeout exceeded when trying to connect");
+      if(!connectionWasNotEstablished || attempt>=CONNECTION_RETRY_DELAYS_MS.length) throw err;
       const delay=CONNECTION_RETRY_DELAYS_MS[attempt];
       console.warn(`PostgreSQL connection refused; retrying in ${delay}ms (attempt ${attempt+1}/${CONNECTION_RETRY_DELAYS_MS.length}).`);
       await sleep(delay);
