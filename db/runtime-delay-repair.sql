@@ -91,7 +91,13 @@ CREATE INDEX IF NOT EXISTS idx_comm_template_lookup
 
 -- Repair columns referenced by the vehicle-document and delivery-deviation sweeps.
 ALTER TABLE vehicle_documents ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE vehicle_documents ADD COLUMN IF NOT EXISTS valid_from date;
+ALTER TABLE vehicle_documents ADD COLUMN IF NOT EXISTS valid_until date;
 ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS delivery_photo text;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS proof_lat numeric;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS proof_lng numeric;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS proof_accuracy numeric;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS delivery_note text;
 ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS time_window_start time;
 ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS time_window_end time;
 ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS planned_kg numeric;
