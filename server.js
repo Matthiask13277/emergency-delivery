@@ -203,44 +203,46 @@ app.use(express.static(path.join(__dirname,"public")));
 app.get("/sync.js",(req,res)=>res.sendFile(path.join(__dirname,"sync.js")));
 app.get("/desktop-launch.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-launch.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
-// Run the priority migration independently first, with retries and explicit logs.
-// This makes the exact database failure visible instead of hiding it inside the
-// larger schema initializer. The IF NOT EXISTS migration is safe to repeat.
-Promise.resolve().then(async()=>{
-  let lastError;
-  for(let attempt=1;attempt<=3;attempt++){
+// Compatibility bridge: older endpoint code treats q() as both an array and a pg result.
+const q=async(s,p=[])=>{
+  const rows=(await pool.query(s,p)).rows;
+  // Array consumers keep working; legacy callers using result.rows also work.
+  rows.rows=rows;
+  return rows;
+};
+async function ensureDelayCommunicationSchema(){
+  // Execute the same versioned SQL file that is integration-tested in CI.
+  await pool.query(fs.readFileSync(path.join(__dirname,"db","runtime-delay-repair.sql"),"utf8"));
+}
+let delaySchemaReady=null;
+function getDelaySchemaReady(){
+  if(!delaySchemaReady){
+    delaySchemaReady=ensureDelayCommunicationSchema()
+      .then(()=>{console.log('Delay communication schema check succeeded');})
+      .catch(err=>{delaySchemaReady=null;console.error('Delay communication schema init failed:',err);throw err;});
+  }
+  return delaySchemaReady;
+}
+// Retry idempotent schema initializers while the managed database is temporarily unavailable.
+async function runSchemaInitializer(name, initializer){
+  let attempt=0;
+  while(true){
+    attempt++;
     try{
-      await ensureTripsPriorityColumn();
-      console.log('trips.priority schema check succeeded');
-      lastError=null;
-      break;
+      await initializer();
+      console.log(name+" schema check succeeded");
+      return;
     }catch(err){
-      lastError=err;
-      console.error(`trips.priority schema attempt ${attempt}/3 failed:`,err);
-      if(attempt<3) await new Promise(resolve=>setTimeout(resolve,attempt*2000));
+      const waitMs=Math.min(60000,Math.max(5000,attempt*5000));
+      console.error(name+" schema attempt "+attempt+" failed; retrying in "+Math.round(waitMs/1000)+"s:",err.message);
+      await new Promise(resolve=>setTimeout(resolve,waitMs));
     }
   }
-  if(lastError) throw lastError;
-}).catch(err=>console.error('CRITICAL: trips.priority migration failed after retries:',err));
-Promise.resolve().then(async()=>{
-  let lastError;
-  for(let attempt=1;attempt<=3;attempt++){
-    try{
-      await ensureTripSignatureColumns();
-      console.log('Trip signature and geofence schema check succeeded');
-      lastError=null;
-      break;
-    }catch(err){
-      lastError=err;
-      console.error(`Trip signature/geofence schema attempt ${attempt}/3 failed:`,err);
-      if(attempt<3) await new Promise(resolve=>setTimeout(resolve,attempt*2000));
-    }
-  }
-  if(lastError) throw lastError;
-}).catch(err=>console.error('CRITICAL: trip signature/geofence schema init failed after retries:',err));
-Promise.resolve().then(()=>ensureV183Columns()).catch(err=>console.error('V183 schema init failed:',err));
-Promise.resolve().then(()=>ensureCompanySettings()).catch(err=>console.error('Company settings init failed:',err));
+}
+runSchemaInitializer("trips.priority",ensureTripsPriorityColumn);
+runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
+runSchemaInitializer("V183",ensureV183Columns);
+runSchemaInitializer("company settings",ensureCompanySettings);
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:true,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:false,operations:false,notifications:true}};
 const PERM_PATHS=[
@@ -3713,6 +3715,7 @@ app.post("/api/control-center/alert-sweep-v77",auth,roles("Admin","Dispatcher"),
 // V78 background live-alert worker
 let v78Running=false;
 async function v78SweepInternal(){
+  await getDelaySchemaReady();
   if(v78Running)return {checked:0,created:0,skipped:true};
   v78Running=true;
   try{
@@ -5176,9 +5179,11 @@ v116Timer.unref?.();
 // SELECT '60 Minuten',60,'critical' WHERE NOT EXISTS(SELECT 1 FROM delay_escalation_rules WHERE threshold_minutes=60);
 // // // V117 delay escalation sweep
 async function v117SweepDelayEscalation(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.actual_arrival_at,t.trip_number
     from trip_stops s join trips t on t.id=s.trip_id
     where s.arrival_variance_min is not null and s.arrival_variance_min>=10
+      and s.actual_arrival_at is null
     order by s.arrival_variance_min desc`);
   const rules=(await q(`select * from delay_escalation_rules where active=true order by threshold_minutes`)).rows;
   const users=(await q(`select id from users where active=true and role in('Admin','Dispatcher')`)).rows;
@@ -5200,7 +5205,7 @@ async function v117SweepDelayEscalation(){
 app.get("/api/notifications/delay-escalation-v117",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const rules=(await q(`select * from delay_escalation_rules order by threshold_minutes`)).rows;
-    const items=(await q(`select s.*,t.trip_number from trip_stops s join trips t on t.id=s.trip_id where s.arrival_variance_min>=10 order by s.arrival_variance_min desc limit 300`)).rows;
+    const items=(await q(`select s.*,t.trip_number from trip_stops s join trips t on t.id=s.trip_id where s.arrival_variance_min>=10 and s.actual_arrival_at is null order by s.arrival_variance_min desc limit 300`)).rows;
     res.json({rules,items});
   }catch(e){res.status(500).json({error:e.message})}
 });
@@ -5218,11 +5223,13 @@ v117Timer.unref?.();
 // ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS customer_delay_notification_status text;
 // // // V118 automatic customer delay communication
 async function v118SweepCustomerDelayCommunication(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.eta_at,s.actual_arrival_at,
       c.id customer_id,c.company,c.email,t.trip_number
     from trip_stops s join trips t on t.id=s.trip_id
     left join customers c on c.id=t.customer_id
-    where s.arrival_variance_min>=10 and coalesce(s.customer_delay_notified_at,null) is null
+    where s.arrival_variance_min>=10 and s.actual_arrival_at is null
+      and coalesce(s.customer_delay_notified_at,null) is null
       and c.email is not null and trim(c.email)<>''`);
   for(const x of r.rows){
     const eta=x.eta_at ? new Date(x.eta_at).toLocaleString("it-IT") : "da confermare";
@@ -5274,11 +5281,13 @@ v118Timer.unref?.();
 // CREATE INDEX IF NOT EXISTS idx_customer_delay_notifications_stop ON customer_delay_notifications(stop_id,created_at DESC);
 // // // V119 intelligent customer ETA updates
 async function v119SweepCustomerEtaUpdates(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.eta_at,s.customer_delay_notified_at,
       t.trip_number,c.id customer_id,c.company,c.email
     from trip_stops s join trips t on t.id=s.trip_id
     left join customers c on c.id=t.customer_id
-    where s.arrival_variance_min>=10 and c.email is not null and trim(c.email)<>''
+    where s.arrival_variance_min>=10 and s.actual_arrival_at is null
+      and c.email is not null and trim(c.email)<>''
     order by s.arrival_variance_min desc`);
   for(const x of r.rows){
     const threshold=x.arrival_variance_min>=60?60:x.arrival_variance_min>=30?30:10;
@@ -5350,11 +5359,12 @@ v119Timer.unref?.();
 // );
 // // // V120 channel-aware customer delay communication
 async function v120SweepCustomerChannels(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id stop_id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.eta_at,
       t.trip_number,c.id customer_id,c.company,c.email,c.preferred_delay_channel,c.sms_phone,c.whatsapp_phone
     from trip_stops s join trips t on t.id=s.trip_id
     left join customers c on c.id=t.customer_id
-    where s.arrival_variance_min>=10`);
+    where s.arrival_variance_min>=10 and s.actual_arrival_at is null`);
   for(const x of r.rows){
     let channel=x.preferred_delay_channel||'email';
     let recipient=channel==='sms'?x.sms_phone:channel==='whatsapp'?x.whatsapp_phone:x.email;
@@ -5363,7 +5373,7 @@ async function v120SweepCustomerChannels(){
     const threshold=x.arrival_variance_min>=60?60:x.arrival_variance_min>=30?30:10;
     const last=await q(`select * from customer_communication_outbox where stop_id=$1 and channel=$2 order by created_at desc limit 1`,[x.stop_id,channel]);
     const eta=x.eta_at?new Date(x.eta_at).toLocaleString("it-IT"):"da confermare";
-    if(last.rows.length && last.rows[0].status in ['Queued','Sending','Sent']) continue;
+    if(last.rows.length && ['Queued','Sending','Sent'].includes(last.rows[0].status)) continue;
     const msg=threshold>=60
       ? `Gentile ${x.company||"Cliente"}, la consegna ${x.trip_number} presenta un ritardo significativo di circa ${x.arrival_variance_min} minuti. Nuova ETA: ${eta}.`
       : threshold>=30
@@ -5643,6 +5653,7 @@ function v124Render(t,data){
   return String(t||"").replace(/\{\{\s*(\w+)\s*\}\}/g,(_,k)=>data[k]??"");
 }
 async function v124Template(channel,language,eventType,threshold){
+  await getDelaySchemaReady();
   let r=await q(`select * from communication_templates where active=true and channel=$1 and language=$2 and event_type=$3 and threshold_minutes<=$4 order by threshold_minutes desc limit 1`,
     [channel,language,eventType,threshold]);
   if(!r.rows.length && language!=="it") r=await q(`select * from communication_templates where active=true and channel=$1 and language='it' and event_type=$2 and threshold_minutes<=$3 order by threshold_minutes desc limit 1`,
@@ -5653,11 +5664,11 @@ async function v124Template(channel,language,eventType,threshold){
 
 // V124 template/customer-language endpoints
 app.get("/api/customer-communication/templates-v124",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
-  try{const r=await q(`select * from communication_templates order by channel,language,event_type,threshold_minutes`);res.json({items:r.rows})}
+  try{await getDelaySchemaReady();const r=await q(`select * from communication_templates order by channel,language,event_type,threshold_minutes`);res.json({items:r.rows})}
   catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/customer-communication/templates-v124",auth,roles("Admin"),async(req,res)=>{
-  try{
+  try{await getDelaySchemaReady();
     const {channel,language,event_type,threshold_minutes,subject,body,active=true}=req.body||{};
     if(!['email','sms','whatsapp'].includes(channel))return res.status(400).json({error:"Invalid channel"});
     const r=await q(`insert into communication_templates(channel,language,event_type,threshold_minutes,subject,body,active) values($1,$2,$3,$4,$5,$6,$7) returning *`,
@@ -5666,7 +5677,7 @@ app.post("/api/customer-communication/templates-v124",auth,roles("Admin"),async(
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.patch("/api/customers/:id/communication-language-v124",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
+  try{await getDelaySchemaReady();
     const lang=String(req.body?.language||'it').toLowerCase();
     if(!['it','de','en'].includes(lang))return res.status(400).json({error:"Unsupported language"});
     const r=await q(`update customers set communication_language=$1 where id=$2 returning id,company,communication_language`,[lang,req.params.id]);
