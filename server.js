@@ -100,11 +100,14 @@ async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
 }
 
-// Keep delivery-proof fields used by PATCH /api/trips/:id compatible with PostgreSQL.
+// Keep delivery-proof and geofence fields used by the driver APIs compatible with PostgreSQL.
+// Each statement is idempotent so startup can safely retry after a database reconnect.
 async function ensureTripSignatureColumns(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS signature_data text`);
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS signature_at timestamptz`);
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS delivery_photo text`);
+  await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS signature_data text`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_radius_m integer NOT NULL DEFAULT 150`);
 }
 
 async function ensureV183Columns(){
