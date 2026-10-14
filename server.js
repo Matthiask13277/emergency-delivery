@@ -2,7 +2,12 @@
 require("dotenv").config();
 const express=require("express"),path=require("path"),bcrypt=require("bcryptjs"),jwt=require("jsonwebtoken");
 const {pool}=require("./local-db.js");
-const app=express(),PORT=process.env.PORT||3000,JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
+const app=express(),PORT=process.env.PORT||3000;
+// Online deployments must provide a unique secret; the fallback is only for local development.
+if(process.env.NODE_ENV==="production"&&!process.env.JWT_SECRET){
+  throw new Error("JWT_SECRET must be configured in production before the server can start.");
+}
+const JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
   res.header("Access-Control-Allow-Methods","GET,POST,PATCH,PUT,DELETE,OPTIONS");
