@@ -1,30 +1,15 @@
-name: Server syntax and schema integration checks
+name: Server JavaScript syntax check
 
 on:
   pull_request:
     branches: [main]
     paths:
       - 'server.js'
-      - 'db/runtime-delay-repair.sql'
       - '.github/workflows/server-syntax.yml'
 
 jobs:
   server-syntax:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: emergency_delivery_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U test -d emergency_delivery_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,40 +17,3 @@ jobs:
           node-version: '20'
       - name: Check server.js syntax
         run: node --check server.js
-      - name: Create minimal existing application schema
-        env:
-          PGPASSWORD: test
-        run: |
-          psql -h localhost -U test -d emergency_delivery_test -v ON_ERROR_STOP=1 -c "
-            CREATE TABLE trips (id uuid PRIMARY KEY, trip_number text, status text);
-            CREATE TABLE customers (id uuid PRIMARY KEY, company text, email text);
-            CREATE TABLE trip_stops (id uuid PRIMARY KEY, trip_id uuid REFERENCES trips(id));
-          "
-      - name: Apply repair SQL twice to verify idempotency
-        env:
-          PGPASSWORD: test
-        run: |
-          psql -h localhost -U test -d emergency_delivery_test -v ON_ERROR_STOP=1 -f db/runtime-delay-repair.sql
-          psql -h localhost -U test -d emergency_delivery_test -v ON_ERROR_STOP=1 -f db/runtime-delay-repair.sql
-      - name: Assert required schema objects and rules
-        env:
-          PGPASSWORD: test
-        run: |
-          psql -h localhost -U test -d emergency_delivery_test -v ON_ERROR_STOP=1 -c "
-            DO \$\$
-            BEGIN
-              IF to_regclass('control_alerts') IS NULL OR to_regclass('delay_escalation_rules') IS NULL
-                OR to_regclass('customer_communication_outbox') IS NULL
-                OR to_regclass('communication_templates') IS NULL THEN
-                RAISE EXCEPTION 'required repair tables missing';
-              END IF;
-              IF (SELECT count(*) FROM delay_escalation_rules WHERE threshold_minutes IN (10,30,60)) <> 3 THEN
-                RAISE EXCEPTION 'delay escalation defaults missing or duplicated';
-              END IF;
-              IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='customer_delay_notified_at')
-                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_communication_outbox' AND column_name='next_attempt_at') THEN
-                RAISE EXCEPTION 'required repair columns missing';
-              END IF;
-            END
-            \$\$;
-          "

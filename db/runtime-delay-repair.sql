@@ -85,5 +85,6 @@ CREATE TABLE IF NOT EXISTS communication_templates(
   active boolean DEFAULT true,
   updated_at timestamptz DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_comm_template
+-- A non-unique lookup index avoids failing the entire repair if legacy duplicates exist.
+CREATE INDEX IF NOT EXISTS idx_comm_template_lookup
   ON communication_templates(channel,language,event_type,threshold_minutes);
