@@ -5280,7 +5280,7 @@ async function v117SweepDelayEscalation(){
 app.get("/api/notifications/delay-escalation-v117",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const rules=(await q(`select * from delay_escalation_rules order by threshold_minutes`)).rows;
-    const items=(await q(`select s.*,t.trip_number from trip_stops s join trips t on t.id=s.trip_id where s.arrival_variance_min>=10 order by s.arrival_variance_min desc limit 300`)).rows;
+    const items=(await q(`select s.*,t.trip_number from trip_stops s join trips t on t.id=s.trip_id where s.arrival_variance_min>=10 and s.actual_arrival_at is null order by s.arrival_variance_min desc limit 300`)).rows;
     res.json({rules,items});
   }catch(e){res.status(500).json({error:e.message})}
 });
@@ -5303,7 +5303,8 @@ async function v118SweepCustomerDelayCommunication(){
       c.id customer_id,c.company,c.email,t.trip_number
     from trip_stops s join trips t on t.id=s.trip_id
     left join customers c on c.id=t.customer_id
-    where s.arrival_variance_min>=10 and coalesce(s.customer_delay_notified_at,null) is null
+    where s.arrival_variance_min>=10 and s.actual_arrival_at is null
+      and coalesce(s.customer_delay_notified_at,null) is null
       and c.email is not null and trim(c.email)<>''`);
   for(const x of r.rows){
     const eta=x.eta_at ? new Date(x.eta_at).toLocaleString("it-IT") : "da confermare";
@@ -5360,7 +5361,8 @@ async function v119SweepCustomerEtaUpdates(){
       t.trip_number,c.id customer_id,c.company,c.email
     from trip_stops s join trips t on t.id=s.trip_id
     left join customers c on c.id=t.customer_id
-    where s.arrival_variance_min>=10 and c.email is not null and trim(c.email)<>''
+    where s.arrival_variance_min>=10 and s.actual_arrival_at is null
+      and c.email is not null and trim(c.email)<>''
     order by s.arrival_variance_min desc`);
   for(const x of r.rows){
     const threshold=x.arrival_variance_min>=60?60:x.arrival_variance_min>=30?30:10;
