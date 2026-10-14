@@ -100,11 +100,15 @@ async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
 }
 
-// Keep delivery-proof fields used by PATCH /api/trips/:id compatible with PostgreSQL.
+// Keep delivery-proof and geofence fields used by the driver APIs compatible with PostgreSQL.
+// Each statement is idempotent so startup can safely retry after a database reconnect.
 async function ensureTripSignatureColumns(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS signature_data text`);
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS signature_at timestamptz`);
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS delivery_photo text`);
+  await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS signature_data text`);
+  await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS photo_data text`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_radius_m integer NOT NULL DEFAULT 150`);
 }
 
 async function ensureV183Columns(){
@@ -216,7 +220,22 @@ Promise.resolve().then(async()=>{
   }
   if(lastError) throw lastError;
 }).catch(err=>console.error('CRITICAL: trips.priority migration failed after retries:',err));
-Promise.resolve().then(()=>ensureTripSignatureColumns()).catch(err=>console.error('Trip signature schema init failed:',err));
+Promise.resolve().then(async()=>{
+  let lastError;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{
+      await ensureTripSignatureColumns();
+      console.log('Trip signature and geofence schema check succeeded');
+      lastError=null;
+      break;
+    }catch(err){
+      lastError=err;
+      console.error(`Trip signature/geofence schema attempt ${attempt}/3 failed:`,err);
+      if(attempt<3) await new Promise(resolve=>setTimeout(resolve,attempt*2000));
+    }
+  }
+  if(lastError) throw lastError;
+}).catch(err=>console.error('CRITICAL: trip signature/geofence schema init failed after retries:',err));
 Promise.resolve().then(()=>ensureV183Columns()).catch(err=>console.error('V183 schema init failed:',err));
 Promise.resolve().then(()=>ensureCompanySettings()).catch(err=>console.error('Company settings init failed:',err));
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
