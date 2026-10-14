@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'server.js'
+      - 'local-db.js'
       - 'db/runtime-delay-repair.sql'
       - '.github/workflows/server-syntax.yml'
 
@@ -30,8 +31,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Check server.js syntax
-        run: node --check server.js
+      - name: Check JavaScript syntax
+        run: |
+          node --check server.js
+          node --check local-db.js
       - name: Create minimal existing application schema
         env:
           PGPASSWORD: test
