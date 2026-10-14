@@ -73,7 +73,13 @@ jobs:
                 OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='customer_communication_outbox' AND column_name='next_attempt_at')
                 OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='vehicle_documents' AND column_name='title')
                 OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='time_window_start')
-                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='delivery_photo') THEN
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='delivery_photo')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='vehicle_documents' AND column_name='valid_from')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='vehicle_documents' AND column_name='valid_until')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='proof_lat')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='proof_lng')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='proof_accuracy')
+                OR NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='trip_stops' AND column_name='delivery_note') THEN
                 RAISE EXCEPTION 'required repair columns missing';
               END IF;
             END
