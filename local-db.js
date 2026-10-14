@@ -61,15 +61,44 @@ function splitSql(sql){
   return out;
 }
 
+const CONNECTION_RETRY_DELAYS_MS=[500,1000,2000,4000,8000];
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+async function queryPostgresWithRetry(text,params){
+  if(!pgPool){
+    const {Pool}=require("pg");
+    pgPool=new Pool({
+      connectionString:process.env.DATABASE_URL,
+      max:5,
+      connectionTimeoutMillis:5000,
+      keepAlive:true
+    });
+    // A pool-level error can occur for idle clients. Handle it so a transient
+    // network interruption does not become an unhandled EventEmitter error.
+    pgPool.on("error",err=>{
+      console.error("PostgreSQL idle client error:",err.message);
+    });
+  }
+
+  for(let attempt=0;;attempt++){
+    try{
+      return await pgPool.query(text,params);
+    }catch(err){
+      // ECONNREFUSED means no TCP connection was established, so this query
+      // was not executed by PostgreSQL and can safely be retried.
+      if(err.code!=="ECONNREFUSED" || attempt>=CONNECTION_RETRY_DELAYS_MS.length) throw err;
+      const delay=CONNECTION_RETRY_DELAYS_MS[attempt];
+      console.warn(`PostgreSQL connection refused; retrying in ${delay}ms (attempt ${attempt+1}/${CONNECTION_RETRY_DELAYS_MS.length}).`);
+      await sleep(delay);
+    }
+  }
+}
+
 const pool={
   async query(text,params=[]){
     // blitz.cloud / online mode: use managed PostgreSQL when DATABASE_URL is present.
     if(process.env.DATABASE_URL){
-      if(!pgPool){
-        const {Pool}=require("pg");
-        pgPool=new Pool({connectionString:process.env.DATABASE_URL,max:5});
-      }
-      return pgPool.query(text,params);
+      return queryPostgresWithRetry(text,params);
     }
     const db=await getDb();
     const statements=splitSql(String(text));
