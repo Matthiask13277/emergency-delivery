@@ -109,6 +109,9 @@ async function ensureTripSignatureColumns(){
   await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS signature_data text`);
   await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS photo_data text`);
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS arrival_radius_m integer NOT NULL DEFAULT 150`);
+  // Dispatch assignment updates these fields; ensure older databases have them before the endpoint is used.
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS planned_start_at timestamptz`);
+  await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS board_note text`);
 }
 
 async function ensureV183Columns(){
