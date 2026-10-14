@@ -274,9 +274,15 @@ async function ensureDelayCommunicationSchema(){
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS uq_comm_template
     ON communication_templates(channel,language,event_type,threshold_minutes)`);
 }
-Promise.resolve().then(()=>ensureDelayCommunicationSchema())
-  .then(()=>console.log('Delay communication schema check succeeded'))
-  .catch(err=>console.error('Delay communication schema init failed:',err));
+let delaySchemaReady=null;
+function getDelaySchemaReady(){
+  if(!delaySchemaReady){
+    delaySchemaReady=ensureDelayCommunicationSchema()
+      .then(()=>{console.log('Delay communication schema check succeeded');})
+      .catch(err=>{delaySchemaReady=null;console.error('Delay communication schema init failed:',err);throw err;});
+  }
+  return delaySchemaReady;
+}
 // Run the priority migration independently first, with retries and explicit logs.
 // This makes the exact database failure visible instead of hiding it inside the
 // larger schema initializer. The IF NOT EXISTS migration is safe to repeat.
@@ -5249,6 +5255,7 @@ v116Timer.unref?.();
 // SELECT '60 Minuten',60,'critical' WHERE NOT EXISTS(SELECT 1 FROM delay_escalation_rules WHERE threshold_minutes=60);
 // // // V117 delay escalation sweep
 async function v117SweepDelayEscalation(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.actual_arrival_at,t.trip_number
     from trip_stops s join trips t on t.id=s.trip_id
     where s.arrival_variance_min is not null and s.arrival_variance_min>=10
@@ -5291,6 +5298,7 @@ v117Timer.unref?.();
 // ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS customer_delay_notification_status text;
 // // // V118 automatic customer delay communication
 async function v118SweepCustomerDelayCommunication(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.eta_at,s.actual_arrival_at,
       c.id customer_id,c.company,c.email,t.trip_number
     from trip_stops s join trips t on t.id=s.trip_id
@@ -5347,6 +5355,7 @@ v118Timer.unref?.();
 // CREATE INDEX IF NOT EXISTS idx_customer_delay_notifications_stop ON customer_delay_notifications(stop_id,created_at DESC);
 // // // V119 intelligent customer ETA updates
 async function v119SweepCustomerEtaUpdates(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.eta_at,s.customer_delay_notified_at,
       t.trip_number,c.id customer_id,c.company,c.email
     from trip_stops s join trips t on t.id=s.trip_id
@@ -5423,6 +5432,7 @@ v119Timer.unref?.();
 // );
 // // // V120 channel-aware customer delay communication
 async function v120SweepCustomerChannels(){
+  await getDelaySchemaReady();
   const r=await q(`select s.id stop_id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.eta_at,
       t.trip_number,c.id customer_id,c.company,c.email,c.preferred_delay_channel,c.sms_phone,c.whatsapp_phone
     from trip_stops s join trips t on t.id=s.trip_id
@@ -5716,6 +5726,7 @@ function v124Render(t,data){
   return String(t||"").replace(/\{\{\s*(\w+)\s*\}\}/g,(_,k)=>data[k]??"");
 }
 async function v124Template(channel,language,eventType,threshold){
+  await getDelaySchemaReady();
   let r=await q(`select * from communication_templates where active=true and channel=$1 and language=$2 and event_type=$3 and threshold_minutes<=$4 order by threshold_minutes desc limit 1`,
     [channel,language,eventType,threshold]);
   if(!r.rows.length && language!=="it") r=await q(`select * from communication_templates where active=true and channel=$1 and language='it' and event_type=$2 and threshold_minutes<=$3 order by threshold_minutes desc limit 1`,
@@ -5726,11 +5737,11 @@ async function v124Template(channel,language,eventType,threshold){
 
 // V124 template/customer-language endpoints
 app.get("/api/customer-communication/templates-v124",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
-  try{const r=await q(`select * from communication_templates order by channel,language,event_type,threshold_minutes`);res.json({items:r.rows})}
+  try{await getDelaySchemaReady();const r=await q(`select * from communication_templates order by channel,language,event_type,threshold_minutes`);res.json({items:r.rows})}
   catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/customer-communication/templates-v124",auth,roles("Admin"),async(req,res)=>{
-  try{
+  try{await getDelaySchemaReady();
     const {channel,language,event_type,threshold_minutes,subject,body,active=true}=req.body||{};
     if(!['email','sms','whatsapp'].includes(channel))return res.status(400).json({error:"Invalid channel"});
     const r=await q(`insert into communication_templates(channel,language,event_type,threshold_minutes,subject,body,active) values($1,$2,$3,$4,$5,$6,$7) returning *`,
@@ -5739,7 +5750,7 @@ app.post("/api/customer-communication/templates-v124",auth,roles("Admin"),async(
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.patch("/api/customers/:id/communication-language-v124",auth,roles("Admin","Dispatcher"),async(req,res)=>{
-  try{
+  try{await getDelaySchemaReady();
     const lang=String(req.body?.language||'it').toLowerCase();
     if(!['it','de','en'].includes(lang))return res.status(400).json({error:"Unsupported language"});
     const r=await q(`update customers set communication_language=$1 where id=$2 returning id,company,communication_language`,[lang,req.params.id]);
