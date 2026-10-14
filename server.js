@@ -5439,7 +5439,7 @@ async function v120SweepCustomerChannels(){
       t.trip_number,c.id customer_id,c.company,c.email,c.preferred_delay_channel,c.sms_phone,c.whatsapp_phone
     from trip_stops s join trips t on t.id=s.trip_id
     left join customers c on c.id=t.customer_id
-    where s.arrival_variance_min>=10`);
+    where s.arrival_variance_min>=10 and s.actual_arrival_at is null`);
   for(const x of r.rows){
     let channel=x.preferred_delay_channel||'email';
     let recipient=channel==='sms'?x.sms_phone:channel==='whatsapp'?x.whatsapp_phone:x.email;
