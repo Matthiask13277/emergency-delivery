@@ -267,11 +267,20 @@ async function ensureDelayCommunicationSchema(){
     subject text,
     message text NOT NULL,
     status text DEFAULT 'Queued',
+    provider text,
+    provider_message_id text,
     attempts integer DEFAULT 0,
     last_error text,
     sent_at timestamptz,
+    delivered_at timestamptz,
+    next_attempt_at timestamptz,
     created_at timestamptz DEFAULT now()
   )`);
+  // Upgrade an existing outbox table created by an earlier release.
+  await q(`ALTER TABLE customer_communication_outbox ADD COLUMN IF NOT EXISTS provider text`);
+  await q(`ALTER TABLE customer_communication_outbox ADD COLUMN IF NOT EXISTS provider_message_id text`);
+  await q(`ALTER TABLE customer_communication_outbox ADD COLUMN IF NOT EXISTS delivered_at timestamptz`);
+  await q(`ALTER TABLE customer_communication_outbox ADD COLUMN IF NOT EXISTS next_attempt_at timestamptz`);
   await q(`CREATE TABLE IF NOT EXISTS communication_templates(
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     channel text NOT NULL,
@@ -5255,6 +5264,7 @@ async function v117SweepDelayEscalation(){
   const r=await q(`select s.id,s.trip_id,s.stop_order,s.address,s.arrival_variance_min,s.actual_arrival_at,t.trip_number
     from trip_stops s join trips t on t.id=s.trip_id
     where s.arrival_variance_min is not null and s.arrival_variance_min>=10
+      and s.actual_arrival_at is null
     order by s.arrival_variance_min desc`);
   const rules=(await q(`select * from delay_escalation_rules where active=true order by threshold_minutes`)).rows;
   const users=(await q(`select id from users where active=true and role in('Admin','Dispatcher')`)).rows;
@@ -5444,7 +5454,7 @@ async function v120SweepCustomerChannels(){
     const threshold=x.arrival_variance_min>=60?60:x.arrival_variance_min>=30?30:10;
     const last=await q(`select * from customer_communication_outbox where stop_id=$1 and channel=$2 order by created_at desc limit 1`,[x.stop_id,channel]);
     const eta=x.eta_at?new Date(x.eta_at).toLocaleString("it-IT"):"da confermare";
-    if(last.rows.length && last.rows[0].status in ['Queued','Sending','Sent']) continue;
+    if(last.rows.length && ['Queued','Sending','Sent'].includes(last.rows[0].status)) continue;
     const msg=threshold>=60
       ? `Gentile ${x.company||"Cliente"}, la consegna ${x.trip_number} presenta un ritardo significativo di circa ${x.arrival_variance_min} minuti. Nuova ETA: ${eta}.`
       : threshold>=30
