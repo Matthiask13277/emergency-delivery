@@ -143,3 +143,6 @@ CREATE TABLE IF NOT EXISTS notification_event_links(
   source_id uuid,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Ensure V111 maintenance notifications can read the vehicle odometer.
+ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS odometer_km numeric NOT NULL DEFAULT 0;
