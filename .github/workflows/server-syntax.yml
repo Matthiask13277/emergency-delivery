@@ -45,6 +45,7 @@ jobs:
             CREATE TABLE trip_stops (id uuid PRIMARY KEY, trip_id uuid REFERENCES trips(id));
             CREATE TABLE orders (id uuid PRIMARY KEY);
             CREATE TABLE vehicle_documents (id uuid PRIMARY KEY, vehicle_id uuid, valid_until date, status text);
+            CREATE TABLE vehicles (id uuid PRIMARY KEY, name text, plate text);
           "
       - name: Apply repair SQL twice to verify idempotency
         env:
