@@ -88,3 +88,52 @@ CREATE TABLE IF NOT EXISTS communication_templates(
 -- A non-unique lookup index avoids failing the entire repair if legacy duplicates exist.
 CREATE INDEX IF NOT EXISTS idx_comm_template_lookup
   ON communication_templates(channel,language,event_type,threshold_minutes);
+
+-- Repair columns referenced by the vehicle-document and delivery-deviation sweeps.
+ALTER TABLE vehicle_documents ADD COLUMN IF NOT EXISTS title text;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS delivery_photo text;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS time_window_start time;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS time_window_end time;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS planned_kg numeric;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS planned_pieces integer;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS deviation_note text;
+ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS deviation_acknowledged boolean NOT NULL DEFAULT false;
+
+-- Idempotently provision event-deduplication tables used by periodic notification sweeps.
+CREATE TABLE IF NOT EXISTS order_event_links(
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id uuid NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  event_key text UNIQUE NOT NULL,
+  status text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_order_event_links_order
+  ON order_event_links(order_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS trip_event_links(
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trip_id uuid NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+  event_key text UNIQUE NOT NULL,
+  status text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_trip_event_links_trip
+  ON trip_event_links(trip_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS stop_event_links(
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  stop_id uuid NOT NULL REFERENCES trip_stops(id) ON DELETE CASCADE,
+  event_key text UNIQUE NOT NULL,
+  status text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_stop_event_links_stop
+  ON stop_event_links(stop_id,created_at DESC);
+
+CREATE TABLE IF NOT EXISTS notification_event_links(
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_key text UNIQUE NOT NULL,
+  source text NOT NULL,
+  source_id uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
