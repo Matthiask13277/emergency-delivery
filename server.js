@@ -203,7 +203,80 @@ app.use(express.static(path.join(__dirname,"public")));
 app.get("/sync.js",(req,res)=>res.sendFile(path.join(__dirname,"sync.js")));
 app.get("/desktop-launch.html", (req, res) => res.sendFile(path.join(__dirname, "desktop-launch.html")));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
-const q=(s,p=[])=>pool.query(s,p).then(r=>r.rows);
+// Compatibility bridge: older endpoint code treats q() as both an array and a pg result.
+const q=async(s,p=[])=>{
+  const rows=(await pool.query(s,p)).rows;
+  // Array consumers keep working; legacy callers using result.rows also work.
+  rows.rows=rows;
+  return rows;
+};
+async function ensureDelayCommunicationSchema(){
+  await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS customer_delay_notified_at timestamptz`);
+  await q(`ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS customer_delay_notification_status text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_delay_channel text DEFAULT 'email'`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS sms_phone text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS whatsapp_phone text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS communication_language text DEFAULT 'it'`);
+  await q(`CREATE TABLE IF NOT EXISTS delay_escalation_rules(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    threshold_minutes integer NOT NULL,
+    severity text NOT NULL,
+    active boolean DEFAULT true
+  )`);
+  await q(`INSERT INTO delay_escalation_rules(name,threshold_minutes,severity)
+    SELECT '10 Minuten',10,'warning'
+    WHERE NOT EXISTS(SELECT 1 FROM delay_escalation_rules WHERE threshold_minutes=10)`);
+  await q(`INSERT INTO delay_escalation_rules(name,threshold_minutes,severity)
+    SELECT '30 Minuten',30,'critical'
+    WHERE NOT EXISTS(SELECT 1 FROM delay_escalation_rules WHERE threshold_minutes=30)`);
+  await q(`INSERT INTO delay_escalation_rules(name,threshold_minutes,severity)
+    SELECT '60 Minuten',60,'critical'
+    WHERE NOT EXISTS(SELECT 1 FROM delay_escalation_rules WHERE threshold_minutes=60)`);
+  await q(`CREATE TABLE IF NOT EXISTS customer_delay_notifications(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    stop_id uuid REFERENCES trip_stops(id) ON DELETE CASCADE,
+    threshold_minutes integer NOT NULL,
+    eta_at timestamptz,
+    email text,
+    subject text,
+    outbox_id uuid,
+    created_at timestamptz DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_customer_delay_notifications_stop
+    ON customer_delay_notifications(stop_id,created_at DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS customer_communication_outbox(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id uuid REFERENCES customers(id) ON DELETE CASCADE,
+    trip_id uuid REFERENCES trips(id) ON DELETE SET NULL,
+    stop_id uuid REFERENCES trip_stops(id) ON DELETE SET NULL,
+    channel text NOT NULL,
+    recipient text,
+    subject text,
+    message text NOT NULL,
+    status text DEFAULT 'Queued',
+    attempts integer DEFAULT 0,
+    last_error text,
+    sent_at timestamptz,
+    created_at timestamptz DEFAULT now()
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS communication_templates(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    channel text NOT NULL,
+    language text NOT NULL DEFAULT 'it',
+    event_type text NOT NULL,
+    threshold_minutes integer DEFAULT 0,
+    subject text,
+    body text NOT NULL,
+    active boolean DEFAULT true,
+    updated_at timestamptz DEFAULT now()
+  )`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS uq_comm_template
+    ON communication_templates(channel,language,event_type,threshold_minutes)`);
+}
+Promise.resolve().then(()=>ensureDelayCommunicationSchema())
+  .then(()=>console.log('Delay communication schema check succeeded'))
+  .catch(err=>console.error('Delay communication schema init failed:',err));
 // Run the priority migration independently first, with retries and explicit logs.
 // This makes the exact database failure visible instead of hiding it inside the
 // larger schema initializer. The IF NOT EXISTS migration is safe to repeat.
