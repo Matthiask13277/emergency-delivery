@@ -283,43 +283,26 @@ function getDelaySchemaReady(){
   }
   return delaySchemaReady;
 }
-// Run the priority migration independently first, with retries and explicit logs.
-// This makes the exact database failure visible instead of hiding it inside the
-// larger schema initializer. The IF NOT EXISTS migration is safe to repeat.
-Promise.resolve().then(async()=>{
-  let lastError;
-  for(let attempt=1;attempt<=3;attempt++){
+// Retry idempotent schema initializers while the managed database is temporarily unavailable.
+async function runSchemaInitializer(name, initializer){
+  let attempt=0;
+  while(true){
+    attempt++;
     try{
-      await ensureTripsPriorityColumn();
-      console.log('trips.priority schema check succeeded');
-      lastError=null;
-      break;
+      await initializer();
+      console.log(name+" schema check succeeded");
+      return;
     }catch(err){
-      lastError=err;
-      console.error(`trips.priority schema attempt ${attempt}/3 failed:`,err);
-      if(attempt<3) await new Promise(resolve=>setTimeout(resolve,attempt*2000));
+      const waitMs=Math.min(60000,Math.max(5000,attempt*5000));
+      console.error(name+" schema attempt "+attempt+" failed; retrying in "+Math.round(waitMs/1000)+"s:",err.message);
+      await new Promise(resolve=>setTimeout(resolve,waitMs));
     }
   }
-  if(lastError) throw lastError;
-}).catch(err=>console.error('CRITICAL: trips.priority migration failed after retries:',err));
-Promise.resolve().then(async()=>{
-  let lastError;
-  for(let attempt=1;attempt<=3;attempt++){
-    try{
-      await ensureTripSignatureColumns();
-      console.log('Trip signature and geofence schema check succeeded');
-      lastError=null;
-      break;
-    }catch(err){
-      lastError=err;
-      console.error(`Trip signature/geofence schema attempt ${attempt}/3 failed:`,err);
-      if(attempt<3) await new Promise(resolve=>setTimeout(resolve,attempt*2000));
-    }
-  }
-  if(lastError) throw lastError;
-}).catch(err=>console.error('CRITICAL: trip signature/geofence schema init failed after retries:',err));
-Promise.resolve().then(()=>ensureV183Columns()).catch(err=>console.error('V183 schema init failed:',err));
-Promise.resolve().then(()=>ensureCompanySettings()).catch(err=>console.error('Company settings init failed:',err));
+}
+runSchemaInitializer("trips.priority",ensureTripsPriorityColumn);
+runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
+runSchemaInitializer("V183",ensureV183Columns);
+runSchemaInitializer("company settings",ensureCompanySettings);
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:true,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:false,operations:false,notifications:true}};
 const PERM_PATHS=[
