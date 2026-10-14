@@ -6321,7 +6321,7 @@ async function ensureV48Schema(){
     CREATE INDEX IF NOT EXISTS idx_orders_planned_trip ON orders(planned_trip_id);
   `);
 }
-ensureV48Schema().catch(err=>console.error("V48 schema init failed:",err));
+runSchemaInitializer("V48",ensureV48Schema);
 
 
 async function ensureV49Schema(){
@@ -6331,7 +6331,7 @@ async function ensureV49Schema(){
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS dispatch_position integer;
   `);
 }
-ensureV49Schema().catch(err=>console.error("V49 schema init failed:",err));
+runSchemaInitializer("V49",ensureV49Schema);
 
 
 async function ensureV50Schema(){
@@ -6340,7 +6340,7 @@ async function ensureV50Schema(){
     ALTER TABLE trip_stops ADD COLUMN IF NOT EXISTS planned_revenue_net numeric NOT NULL DEFAULT 0;
   `);
 }
-ensureV50Schema().catch(err=>console.error("V50 schema init failed:",err));
+runSchemaInitializer("V50",ensureV50Schema);
 
 
 async function ensureV51Schema(){
@@ -6354,7 +6354,7 @@ async function ensureV51Schema(){
     ALTER TABLE trips ADD COLUMN IF NOT EXISTS route_eta_end_at timestamptz;
   `);
 }
-ensureV51Schema().catch(err=>console.error("V51 schema init failed:",err));
+runSchemaInitializer("V51",ensureV51Schema);
 
 
 async function ensureV52Schema(){
@@ -6367,7 +6367,7 @@ async function ensureV52Schema(){
     CREATE INDEX IF NOT EXISTS idx_trip_stops_lat_lng ON trip_stops(lat,lng);
   `);
 }
-ensureV52Schema().catch(err=>console.error("V52 schema init failed:",err));
+runSchemaInitializer("V52",ensureV52Schema);
 
 
 async function ensureV55Schema(){
@@ -6377,7 +6377,7 @@ async function ensureV55Schema(){
     ALTER TABLE trips ADD COLUMN IF NOT EXISTS gps_last_at timestamptz;
   `);
 }
-ensureV55Schema().catch(err=>console.error("V55 schema init failed:",err));
+runSchemaInitializer("V55",ensureV55Schema);
 
 
 async function ensureV57Schema(){
@@ -6386,7 +6386,7 @@ async function ensureV57Schema(){
     ALTER TABLE trips ADD COLUMN IF NOT EXISTS live_alert_state text NOT NULL DEFAULT 'normal';
   `);
 }
-ensureV57Schema().catch(err=>console.error("V57 schema init failed:",err));
+runSchemaInitializer("V57",ensureV57Schema);
 
 // V143 stop drag/drop + automatic route/ETA recalculation
 
