@@ -217,6 +217,18 @@ async function ensureDelayCommunicationSchema(){
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS sms_phone text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS whatsapp_phone text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS communication_language text DEFAULT 'it'`);
+  await q(`CREATE TABLE IF NOT EXISTS control_alerts(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id uuid REFERENCES trips(id) ON DELETE CASCADE,
+    type text NOT NULL,
+    severity text NOT NULL DEFAULT 'info',
+    message text NOT NULL,
+    acknowledged boolean NOT NULL DEFAULT false,
+    acknowledged_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_control_alerts_active
+    ON control_alerts(acknowledged,severity,created_at DESC)`);
   await q(`CREATE TABLE IF NOT EXISTS delay_escalation_rules(
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
@@ -3775,6 +3787,7 @@ app.post("/api/control-center/alert-sweep-v77",auth,roles("Admin","Dispatcher"),
 // V78 background live-alert worker
 let v78Running=false;
 async function v78SweepInternal(){
+  await getDelaySchemaReady();
   if(v78Running)return {checked:0,created:0,skipped:true};
   v78Running=true;
   try{
