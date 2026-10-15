@@ -1,7 +1,6 @@
-const CACHE = "emergency-delivery-mobile-v222";
+const CACHE = "emergency-delivery-mobile-v223";
 const APP_SHELL = [
   "/",
-  "/index.html",
   "/sync.js",
   "/manifest.json",
   "/service-worker.js",
@@ -11,7 +10,8 @@ const APP_SHELL = [
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // A missing optional asset must not abort installation of the whole worker.
+    // Cache each available shell asset independently; /index.html is intentionally
+    // omitted because this hosting setup serves the app at /, not that path.
     await Promise.all(APP_SHELL.map(async path => {
       try {
         const response = await fetch(path, { cache: "reload" });
