@@ -4840,28 +4840,48 @@ app.post("/api/notifications/push-preferences-v109/test",auth,roles("Admin"),asy
 });
 
 
-// -- V110 notification inbox
-// CREATE TABLE IF NOT EXISTS notification_inbox(
-// id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-// user_id uuid REFERENCES users(id) ON DELETE CASCADE,
-// source text NOT NULL,
-// source_id uuid,
-// title text NOT NULL,
-// message text NOT NULL,
-// severity text NOT NULL DEFAULT 'info',
-// read_at timestamptz,
-// created_at timestamptz NOT NULL DEFAULT now()
-// );
-// CREATE INDEX IF NOT EXISTS idx_notification_inbox_user ON notification_inbox(user_id,read_at,created_at DESC);
-// // // -- V111 automatic inbox event deduplication
-// CREATE TABLE IF NOT EXISTS notification_event_links(
-// id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-// event_key text UNIQUE NOT NULL,
-// source text NOT NULL,
-// source_id uuid,
-// created_at timestamptz NOT NULL DEFAULT now()
-// );
-// CREATE INDEX IF NOT EXISTS idx_notification_event_links_created ON notification_event_links(created_at DESC);
+// -- V110-V114 notification inbox and event tracking schema
+// Keep these tables initialized on managed PostgreSQL as well as local PGlite.
+async function ensureNotificationEventSchema(){
+  await q(`CREATE TABLE IF NOT EXISTS notification_inbox(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+    source text NOT NULL,
+    source_id uuid,
+    title text NOT NULL,
+    message text NOT NULL,
+    severity text NOT NULL DEFAULT 'info',
+    read_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_notification_inbox_user ON notification_inbox(user_id,read_at,created_at DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS notification_event_links(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_key text UNIQUE NOT NULL,
+    source text NOT NULL,
+    source_id uuid,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_notification_event_links_created ON notification_event_links(created_at DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS trip_event_links(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id uuid NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+    event_key text UNIQUE NOT NULL,
+    status text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_trip_event_links_trip ON trip_event_links(trip_id,created_at DESC)`);
+  await q(`CREATE TABLE IF NOT EXISTS stop_event_links(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    stop_id uuid NOT NULL REFERENCES trip_stops(id) ON DELETE CASCADE,
+    event_key text UNIQUE NOT NULL,
+    status text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_stop_event_links_stop ON stop_event_links(stop_id,created_at DESC)`);
+}
+runSchemaInitializer("V110-V114 notification/event",ensureNotificationEventSchema);
+
 // // // V111 automatic event -> inbox bridge
 async function v111CreateInboxEvent(eventKey,source,sourceId,title,message,severity="info",rolesList=["Admin","Dispatcher"]){
   try{
