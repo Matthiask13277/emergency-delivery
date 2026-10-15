@@ -6667,6 +6667,68 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
   }catch(e){res.status(500).json({error:'Angebot konnte nicht versendet werden'})}
 });
 
+
+// Gmail background import. Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+// GOOGLE_REFRESH_TOKEN and GMAIL_IMPORT_QUERY as deployment environment variables.
+// No credentials are stored in source code; import remains inactive until configured.
+let gmailPollRunning=false;
+async function gmailAccessToken(){
+  const {GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_REFRESH_TOKEN}=process.env;
+  if(!GOOGLE_CLIENT_ID||!GOOGLE_CLIENT_SECRET||!GOOGLE_REFRESH_TOKEN)return null;
+  const form=new URLSearchParams({client_id:GOOGLE_CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'});
+  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
+  if(!response.ok)throw new Error('Gmail OAuth token refresh failed: '+response.status);
+  return (await response.json()).access_token;
+}
+function gmailDecode(data){
+  if(!data)return '';
+  const normalized=data.replace(/-/g,'+').replace(/_/g,'/');
+  return Buffer.from(normalized,'base64').toString('utf8');
+}
+function gmailHeader(headers,name){return (headers||[]).find(h=>String(h.name).toLowerCase()===name.toLowerCase())?.value||''}
+function gmailText(payload){
+  if(!payload)return '';
+  if(payload.mimeType==='text/plain'&&payload.body?.data)return gmailDecode(payload.body.data);
+  for(const part of payload.parts||[]){const found=gmailText(part);if(found)return found}
+  return '';
+}
+async function importGmailTransportRequests(){
+  if(gmailPollRunning||!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.GOOGLE_REFRESH_TOKEN)return;
+  gmailPollRunning=true;
+  try{
+    await ensureTransportOffersSchema();
+    const token=await gmailAccessToken();
+    const query=process.env.GMAIL_IMPORT_QUERY||'newer_than:2d (transport OR transport request OR delivery OR lieferung OR transportanfrage)';
+    const listResponse=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=30&q='+encodeURIComponent(query),{headers:{authorization:'Bearer '+token}});
+    if(!listResponse.ok)throw new Error('Gmail message list failed: '+listResponse.status);
+    const list=await listResponse.json();
+    for(const item of list.messages||[]){
+      const exists=await q('SELECT id FROM transport_requests WHERE email_message_id=$1',[item.id]);
+      if(exists[0])continue;
+      const detailResponse=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(item.id)+'?format=full',{headers:{authorization:'Bearer '+token}});
+      if(!detailResponse.ok)continue;
+      const msg=await detailResponse.json(),headers=msg.payload?.headers||[];
+      const from=gmailHeader(headers,'From'),subject=gmailHeader(headers,'Subject'),received=msg.internalDate?new Date(Number(msg.internalDate)).toISOString():null;
+      const body=gmailText(msg.payload).slice(0,20000);
+      const email=(from.match(/<([^>]+)>/)||[])[1]||from;
+      const customerEmail=email.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||null;
+      const customerName=from.replace(/<[^>]+>/,'').replace(/"/g,'').trim()||null;
+      const customer=customerEmail?(await q('SELECT id,company FROM customers WHERE lower(email)=lower($1) ORDER BY id LIMIT 1',[customerEmail]))[0]:null;
+      await q(`INSERT INTO transport_requests(email_message_id,email_from,email_subject,email_received_at,customer_id,customer_name,customer_email,notes)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(email_message_id) DO NOTHING`,
+        [item.id,from,subject,received,customer?.id||null,customer?.company||customerName,customerEmail,body||null]);
+    }
+  }catch(e){console.error('Gmail transport import failed:',e.message)}
+  finally{gmailPollRunning=false}
+}
+const gmailImportTimer=setInterval(()=>importGmailTransportRequests(),120000);
+gmailImportTimer.unref?.();
+setTimeout(()=>importGmailTransportRequests(),15000).unref?.();
+app.get('/api/transport-requests/gmail-status',auth,roles('Admin','Dispatcher'),(req,res)=>{
+  const configured=!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REFRESH_TOKEN);
+  res.json({configured,mode:configured?'background-polling':'disabled',interval_seconds:120,reason:configured?null:'Gmail OAuth environment variables are not configured'});
+});
+
 // Single online/server entry point. blitz.cloud supplies PORT (normally 8080).
 // Start the listener both when server.js is the main process and when Electron
 // loads it as a local backend module.
