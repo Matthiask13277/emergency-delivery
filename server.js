@@ -6588,6 +6588,8 @@ async function ensureTransportOffersSchema(){
   )`);
   await q(`CREATE INDEX IF NOT EXISTS idx_transport_requests_status_created ON transport_requests(status,created_at DESC)`);
   await q(`CREATE INDEX IF NOT EXISTS idx_transport_offers_request ON transport_offers(request_id,created_at DESC)`);
+  // Atomic send claim prevents concurrent requests from sending the same approved offer twice.
+  await q(`ALTER TABLE transport_offers ADD COLUMN IF NOT EXISTS send_claimed_at timestamptz`);
 }
 runSchemaInitializer("transport requests/offers",ensureTransportOffersSchema);
 
@@ -6640,10 +6642,19 @@ app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),as
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  let claimedOfferId=null;
   try{
-    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[req.params.id]))[0];
-    if(!offer)return res.status(404).json({error:'Angebot nicht gefunden'});
-    if(offer.status!=='approved')return res.status(409).json({error:'Vor dem Versand muss das Angebot ausdrücklich freigegeben werden'});
+    // Claim the approved offer atomically before generating a PDF or sending mail.
+    const claimed=await q(`UPDATE transport_offers SET send_claimed_at=now(),updated_at=now()
+      WHERE id=$1 AND status='approved' AND send_claimed_at IS NULL RETURNING id`,[req.params.id]);
+    if(!claimed[0]){
+      const current=(await q('SELECT id,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
+      if(!current)return res.status(404).json({error:'Angebot nicht gefunden'});
+      if(current.status!=='approved')return res.status(409).json({error:'Vor dem Versand muss das Angebot ausdrücklich freigegeben werden'});
+      return res.status(409).json({error:'Der Versand dieses Angebots läuft bereits oder muss nach einem unterbrochenen Versand geprüft werden'});
+    }
+    claimedOfferId=claimed[0].id;
+    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[claimedOfferId]))[0];
     if(!offer.customer_email)return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});
     const transport=smtpTransport();if(!transport)return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
@@ -6662,9 +6673,16 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     if(offer.terms)doc.moveDown().text('Bedingungen: '+offer.terms);
     doc.end();await finished;const pdf=Buffer.concat(chunks);
     await transport.sendMail({from:smtpCfg.from||smtpCfg.user,to:offer.customer_email,subject:'Transportangebot '+offer.offer_number,text:'Guten Tag, anbei erhalten Sie unser Transportangebot. Bei Rückfragen melden Sie sich gerne.\n\n'+(company.company_name||'Emergency Delivery'),attachments:[{filename:offer.offer_number+'.pdf',content:pdf,contentType:'application/pdf'}]});
-    await q(`UPDATE transport_offers SET status='sent',sent_at=now(),updated_at=now() WHERE id=$1 AND status='approved'`,[offer.id]);
+    await q(`UPDATE transport_offers SET status='sent',sent_at=now(),send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[offer.id]);
     await audit(req,'TRANSPORT_OFFER_SENT',offer.offer_number);res.json({ok:true,offer_number:offer.offer_number});
-  }catch(e){res.status(500).json({error:'Angebot konnte nicht versendet werden'})}
+  }catch(e){
+    // Release the claim on known failures. A process crash after SMTP accepts mail leaves
+    // the claim in place for manual reconciliation rather than risking an automatic duplicate.
+    if(claimedOfferId){
+      try{await q(`UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[claimedOfferId]);}catch(_releaseError){}
+    }
+    res.status(500).json({error:'Angebot konnte nicht versendet werden'});
+  }
 });
 
 
