@@ -2,6 +2,7 @@
 require("dotenv").config();
 const express=require("express"),path=require("path"),bcrypt=require("bcryptjs"),jwt=require("jsonwebtoken");
 const {pool}=require("./local-db.js");
+const {listGmailMessages}=require("./gmail-pagination.js");
 const app=express(),PORT=process.env.PORT||3000,JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
@@ -6722,19 +6723,7 @@ async function importGmailTransportRequests(){
     await ensureTransportOffersSchema();
     const token=await gmailAccessToken();
     const query=process.env.GMAIL_IMPORT_QUERY||'newer_than:2d (transport OR transport request OR delivery OR lieferung OR transportanfrage)';
-    // Walk every result page: otherwise a busy inbox can keep returning the same
-    // newest 30 messages forever and starve older matching requests.
-    const messages=[];
-    let pageToken=null;
-    do{
-      const params=new URLSearchParams({maxResults:'100',q:query});
-      if(pageToken)params.set('pageToken',pageToken);
-      const listResponse=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?'+params.toString(),{headers:{authorization:'Bearer '+token}});
-      if(!listResponse.ok)throw new Error('Gmail message list failed: '+listResponse.status);
-      const list=await listResponse.json();
-      messages.push(...(list.messages||[]));
-      pageToken=list.nextPageToken||null;
-    }while(pageToken);
+    const messages=await listGmailMessages({query,token});
     for(const item of messages){
       const exists=await q('SELECT id FROM transport_requests WHERE email_message_id=$1',[item.id]);
       if(exists[0])continue;
