@@ -6643,6 +6643,7 @@ app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),as
 });
 app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async(req,res)=>{
   let claimedOfferId=null;
+  let mailAccepted=false;
   try{
     // Claim the approved offer atomically before generating a PDF or sending mail.
     const claimed=await q(`UPDATE transport_offers SET send_claimed_at=now(),updated_at=now()
@@ -6673,13 +6674,17 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     if(offer.terms)doc.moveDown().text('Bedingungen: '+offer.terms);
     doc.end();await finished;const pdf=Buffer.concat(chunks);
     await transport.sendMail({from:smtpCfg.from||smtpCfg.user,to:offer.customer_email,subject:'Transportangebot '+offer.offer_number,text:'Guten Tag, anbei erhalten Sie unser Transportangebot. Bei Rückfragen melden Sie sich gerne.\n\n'+(company.company_name||'Emergency Delivery'),attachments:[{filename:offer.offer_number+'.pdf',content:pdf,contentType:'application/pdf'}]});
+    // SMTP accepted the message; keep the claim if finalization fails to avoid duplicate sends.
+    mailAccepted=true;
     await q(`UPDATE transport_offers SET status='sent',sent_at=now(),send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[offer.id]);
     await audit(req,'TRANSPORT_OFFER_SENT',offer.offer_number);res.json({ok:true,offer_number:offer.offer_number});
   }catch(e){
     // Release the claim on known failures. A process crash after SMTP accepts mail leaves
     // the claim in place for manual reconciliation rather than risking an automatic duplicate.
-    if(claimedOfferId){
+    if(claimedOfferId&&!mailAccepted){
       try{await q(`UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[claimedOfferId]);}catch(_releaseError){}
+    }else if(mailAccepted){
+      console.error('SMTP accepted transport offer email, but finalization failed; offer remains claimed for manual reconciliation:',claimedOfferId);
     }
     res.status(500).json({error:'Angebot konnte nicht versendet werden'});
   }
