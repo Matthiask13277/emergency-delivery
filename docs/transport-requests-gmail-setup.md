@@ -43,4 +43,5 @@ Nach erfolgreicher CI und Bereitstellung bitte mit einem internen Testpostfach u
 - Der Import liest Nachrichtentext; Anhänge werden derzeit nicht ausgelesen.
 - Die Gmail-Suche ist konfigurierbar und kann relevante Nachrichten übersehen oder irrelevante Nachrichten erfassen.
 - Ein grüner Syntax-/Schema-Workflow ersetzt keinen echten Gmail-/SMTP-Integrationstest.
+- Wenn SMTP die E-Mail bereits angenommen hat, aber die abschließende Datenbankaktualisierung fehlschlägt, bleibt der Versand-Claim absichtlich gesetzt. Vor einer manuellen Freigabe muss im SMTP-/Mailprotokoll geprüft werden, ob die Nachricht tatsächlich versendet wurde; den Claim nicht blind zurücksetzen, sonst droht eine Doppelzustellung.
 - PR #54 erst zusammenführen, wenn alle Prüfungen auf dem aktuellen Commit erfolgreich sind und der Ende-zu-Ende-Test bestanden wurde.
