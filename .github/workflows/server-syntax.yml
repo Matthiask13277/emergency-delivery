@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'server.js'
+      - 'gmail-pagination.js'
+      - 'tests/gmail-pagination.test.js'
+      - 'package.json'
       - 'index.html'
       - 'local-db.js'
       - 'db/runtime-delay-repair.sql'
@@ -36,6 +39,8 @@ jobs:
         run: |
           node --check server.js
           node --check local-db.js
+          node --check gmail-pagination.js
+          npm run test:gmail-pagination
       - name: Check inline browser JavaScript syntax
         run: |
           node <<'NODE'
