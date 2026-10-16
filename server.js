@@ -6655,8 +6655,8 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     }
     claimedOfferId=claimed[0].id;
     const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[claimedOfferId]))[0];
-    if(!offer.customer_email)return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});
-    const transport=smtpTransport();if(!transport)return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});
+    if(!offer.customer_email){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});}
+    const transport=smtpTransport();if(!transport){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});}
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
     const PDFDocument=require('pdfkit'),chunks=[];const doc=new PDFDocument({size:'A4',margin:48});
     doc.on('data',c=>chunks.push(c));const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
