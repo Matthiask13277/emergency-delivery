@@ -6649,8 +6649,8 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
     const PDFDocument=require('pdfkit'),chunks=[];const doc=new PDFDocument({size:'A4',margin:48});
     doc.on('data',c=>chunks.push(c));const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
-    doc.fontSize(20).font('Helvetica-Bold').text(company.company_name||'Emergency Delivery');
-    doc.moveDown().fontSize(18).text('ANGEBOT');doc.moveDown();
+    await v185PdfLogo(doc,company);
+    doc.fontSize(18).font('Helvetica-Bold').text('ANGEBOT');doc.moveDown();
     doc.fontSize(10).font('Helvetica').text('Angebotsnummer: '+offer.offer_number);
     doc.text('Kunde: '+(offer.customer_name||offer.customer_email));
     if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
