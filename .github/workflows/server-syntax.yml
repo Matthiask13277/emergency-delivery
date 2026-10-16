@@ -40,7 +40,8 @@ jobs:
           node --check server.js
           node --check local-db.js
           node --check gmail-pagination.js
-          npm run test:gmail-pagination
+      - name: Test Gmail pagination behavior
+        run: npm run test:gmail-pagination
       - name: Check inline browser JavaScript syntax
         run: |
           node <<'NODE'
