@@ -6675,7 +6675,7 @@ app.patch('/api/transport-offers/:id',auth,roles('Admin','Dispatcher'),async(req
     const taxAmount=Math.round(net*tax)/100;
     const gross=Math.round((net+taxAmount)*100)/100;
     const validUntil=String(req.body?.valid_until||'').trim()||null;
-    if(validUntil&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(validUntil))return res.status(400).json({error:'Bitte ein gültiges Gültigkeitsdatum verwenden'});
+    if(validUntil&&!/^\d{4}-\d{2}-\d{2}$/.test(validUntil))return res.status(400).json({error:'Bitte ein gültiges Gültigkeitsdatum verwenden'});
     const terms=String(req.body?.terms||'').trim()||null;
     const updated=(await q(`UPDATE transport_offers SET net_amount=$2,tax_rate=$3,tax_amount=$4,gross_amount=$5,valid_until=$6,terms=$7,status='draft',approved_at=NULL,updated_at=now() WHERE id=$1 AND status IN ('draft','approved') AND send_claimed_at IS NULL RETURNING *`,[req.params.id,net,tax,taxAmount,gross,validUntil,terms]))[0];
     if(!updated)return res.status(409).json({error:'Angebot wurde zwischenzeitlich geändert; bitte aktualisieren'});
