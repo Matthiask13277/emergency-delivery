@@ -836,7 +836,7 @@ async function saveCustomer(id){
 }
 async function deleteCustomer(id){
   if(!confirm("Kunden aus der aktiven Kundenliste entfernen? Zugehörige Aufträge, Touren, Rechnungen und historische Daten bleiben erhalten."))return;
-  try{await api("/api/customers/manage/"+id,{method:"DELETE"});await refreshState();loadCustomersManage()}catch(e){alert(e.message)}
+  try{await api("/api/customers/manage/"+id,{method:"DELETE"});window.customerCache=(window.customerCache||[]).filter(x=>String(x.id)!==String(id));await refreshState();await loadCustomersManage()}catch(e){alert(e.message)}
 }
 
 function openInvoice(){
