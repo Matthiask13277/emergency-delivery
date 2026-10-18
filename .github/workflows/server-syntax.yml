@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'server.js'
+      - 'gmail-pagination.js'
+      - 'tests/gmail-pagination.test.js'
+      - 'package.json'
+      - 'index.html'
       - 'local-db.js'
       - 'db/runtime-delay-repair.sql'
       - '.github/workflows/server-syntax.yml'
@@ -35,6 +39,25 @@ jobs:
         run: |
           node --check server.js
           node --check local-db.js
+          node --check gmail-pagination.js
+      - name: Test Gmail pagination behavior
+        run: npm run test:gmail-pagination
+      - name: Check inline browser JavaScript syntax
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
+            .map(match => match[1]).filter(source => source.trim());
+          scripts.forEach((source, index) => {
+            try { new Function(source); }
+            catch (error) {
+              console.error('Inline script ' + index + ': ' + error.message);
+              process.exitCode = 1;
+            }
+          });
+          if (!process.exitCode) console.log('Checked ' + scripts.length + ' inline scripts.');
+          NODE
       - name: Create minimal existing application schema
         env:
           PGPASSWORD: test

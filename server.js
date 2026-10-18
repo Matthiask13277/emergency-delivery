@@ -2,6 +2,7 @@
 require("dotenv").config();
 const express=require("express"),path=require("path"),bcrypt=require("bcryptjs"),jwt=require("jsonwebtoken");
 const {pool}=require("./local-db.js");
+const {listGmailMessages}=require("./gmail-pagination.js");
 const app=express(),PORT=process.env.PORT||3000,JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
@@ -6541,6 +6542,213 @@ app.delete('/api/calendar/events/:id',auth,roles('Admin','Dispatcher','Accountin
     if(!r[0])return res.status(404).json({error:'Termin nicht gefunden'});
     await audit(req,'CALENDAR_DELETED',r[0].title); res.json({ok:true});
   }catch(e){res.status(400).json({error:e.message})}
+});
+
+
+// Transport requests & offers (Gmail import is enabled only when dedicated env vars exist).
+async function ensureTransportOffersSchema(){
+  await q(`CREATE TABLE IF NOT EXISTS transport_requests(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    email_message_id text UNIQUE,
+    email_from text,
+    email_subject text,
+    email_received_at timestamptz,
+    customer_id uuid REFERENCES customers(id),
+    customer_name text,
+    customer_email text,
+    customer_phone text,
+    pickup_address text,
+    pickup_city text,
+    delivery_address text,
+    delivery_city text,
+    goods_description text,
+    requested_date date,
+    notes text,
+    status text NOT NULL DEFAULT 'new' CHECK(status IN ('new','reviewed','offered','accepted','declined','converted')),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE TABLE IF NOT EXISTS transport_offers(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id uuid NOT NULL REFERENCES transport_requests(id) ON DELETE CASCADE,
+    offer_number text UNIQUE NOT NULL,
+    net_amount numeric(12,2) NOT NULL CHECK(net_amount>=0),
+    tax_rate numeric(5,2) NOT NULL DEFAULT 0 CHECK(tax_rate>=0 AND tax_rate<=100),
+    tax_amount numeric(12,2) NOT NULL,
+    gross_amount numeric(12,2) NOT NULL,
+    currency text NOT NULL DEFAULT 'EUR',
+    valid_until date,
+    terms text,
+    status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','approved','sent','accepted','declined')),
+    pdf_data text,
+    approved_at timestamptz,
+    sent_at timestamptz,
+    created_by uuid,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_transport_requests_status_created ON transport_requests(status,created_at DESC)`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_transport_offers_request ON transport_offers(request_id,created_at DESC)`);
+  // Atomic send claim prevents concurrent requests from sending the same approved offer twice.
+  await q(`ALTER TABLE transport_offers ADD COLUMN IF NOT EXISTS send_claimed_at timestamptz`);
+}
+runSchemaInitializer("transport requests/offers",ensureTransportOffersSchema);
+
+app.get('/api/transport-requests',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
+  try{await ensureTransportOffersSchema();res.json(await q(`SELECT r.*,c.company AS matched_company FROM transport_requests r LEFT JOIN customers c ON c.id=r.customer_id ORDER BY r.created_at DESC LIMIT 300`));}
+  catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/transport-requests',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  try{
+    await ensureTransportOffersSchema();
+    const b=req.body||{};
+    if(!b.email_subject && !b.customer_name && !b.customer_email)return res.status(400).json({error:'Betreff oder Kundendaten erforderlich'});
+    let customerId=b.customer_id||null;
+    if(!customerId && b.customer_email){
+      const found=await q('SELECT id FROM customers WHERE lower(email)=lower($1) ORDER BY id LIMIT 1',[b.customer_email]);
+      if(found[0])customerId=found[0].id;
+    }
+    const rows=await q(`INSERT INTO transport_requests(email_message_id,email_from,email_subject,email_received_at,customer_id,customer_name,customer_email,customer_phone,pickup_address,pickup_city,delivery_address,delivery_city,goods_description,requested_date,notes)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [b.email_message_id||null,b.email_from||null,b.email_subject||null,b.email_received_at||null,customerId,b.customer_name||null,b.customer_email||null,b.customer_phone||null,b.pickup_address||null,b.pickup_city||null,b.delivery_address||null,b.delivery_city||null,b.goods_description||null,b.requested_date||null,b.notes||null]);
+    await audit(req,'TRANSPORT_REQUEST_CREATED',rows[0].email_subject||rows[0].customer_name||rows[0].id);
+    res.status(201).json(rows[0]);
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/transport-requests/:id/offer',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  try{
+    await ensureTransportOffersSchema();
+    const b=req.body||{},net=Number(b.net_amount),tax=Number(b.tax_rate||0);
+    if(!Number.isFinite(net)||net<0||!Number.isFinite(tax)||tax<0||tax>100)return res.status(400).json({error:'Bitte gültigen Nettopreis und Steuersatz eingeben'});
+    const request=(await q('SELECT * FROM transport_requests WHERE id=$1',[req.params.id]))[0];
+    if(!request)return res.status(404).json({error:'Transportanfrage nicht gefunden'});
+    const num='ANG-'+new Date().getFullYear()+'-'+Date.now().toString().slice(-8);
+    const taxAmount=Math.round(net*tax)/100, gross=Math.round((net+taxAmount)*100)/100;
+    const rows=await q(`INSERT INTO transport_offers(request_id,offer_number,net_amount,tax_rate,tax_amount,gross_amount,valid_until,terms,created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [request.id,num,net,tax,taxAmount,gross,b.valid_until||null,b.terms||null,req.user?.id||null]);
+    await q(`UPDATE transport_requests SET status='offered',updated_at=now() WHERE id=$1`,[request.id]);
+    await audit(req,'TRANSPORT_OFFER_DRAFTED',num);res.status(201).json(rows[0]);
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.get('/api/transport-offers',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
+  try{await ensureTransportOffersSchema();res.json(await q(`SELECT o.*,r.customer_name,r.customer_email,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id ORDER BY o.created_at DESC LIMIT 300`));}
+  catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  try{
+    const rows=await q(`UPDATE transport_offers SET status='approved',approved_at=now(),updated_at=now() WHERE id=$1 AND status='draft' RETURNING *`,[req.params.id]);
+    if(!rows[0])return res.status(409).json({error:'Angebot nicht gefunden oder nicht mehr im Entwurf'});
+    await audit(req,'TRANSPORT_OFFER_APPROVED',rows[0].offer_number);res.json(rows[0]);
+  }catch(e){res.status(400).json({error:e.message})}
+});
+app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  let claimedOfferId=null;
+  let mailAccepted=false;
+  try{
+    // Claim the approved offer atomically before generating a PDF or sending mail.
+    const claimed=await q(`UPDATE transport_offers SET send_claimed_at=now(),updated_at=now()
+      WHERE id=$1 AND status='approved' AND send_claimed_at IS NULL RETURNING id`,[req.params.id]);
+    if(!claimed[0]){
+      const current=(await q('SELECT id,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
+      if(!current)return res.status(404).json({error:'Angebot nicht gefunden'});
+      if(current.status!=='approved')return res.status(409).json({error:'Vor dem Versand muss das Angebot ausdrücklich freigegeben werden'});
+      return res.status(409).json({error:'Der Versand dieses Angebots läuft bereits oder muss nach einem unterbrochenen Versand geprüft werden'});
+    }
+    claimedOfferId=claimed[0].id;
+    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[claimedOfferId]))[0];
+    if(!offer.customer_email){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});}
+    const transport=smtpTransport();if(!transport){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});}
+    const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
+    const PDFDocument=require('pdfkit'),chunks=[];const doc=new PDFDocument({size:'A4',margin:48});
+    doc.on('data',c=>chunks.push(c));const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
+    await v185PdfLogo(doc,company);
+    doc.fontSize(18).font('Helvetica-Bold').text('ANGEBOT');doc.moveDown();
+    doc.fontSize(10).font('Helvetica').text('Angebotsnummer: '+offer.offer_number);
+    doc.text('Kunde: '+(offer.customer_name||offer.customer_email));
+    if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
+    doc.moveDown().text('Transportanfrage: '+(offer.email_subject||'Transport'));
+    doc.moveDown().text('Nettobetrag: '+Number(offer.net_amount).toFixed(2)+' EUR');
+    doc.text('Steuer ('+Number(offer.tax_rate).toFixed(2)+'%): '+Number(offer.tax_amount).toFixed(2)+' EUR');
+    doc.font('Helvetica-Bold').text('Gesamtbetrag: '+Number(offer.gross_amount).toFixed(2)+' EUR');
+    if(offer.valid_until)doc.moveDown().font('Helvetica').text('Angebot gültig bis: '+String(offer.valid_until).slice(0,10));
+    if(offer.terms)doc.moveDown().text('Bedingungen: '+offer.terms);
+    doc.end();await finished;const pdf=Buffer.concat(chunks);
+    await transport.sendMail({from:smtpCfg.from||smtpCfg.user,to:offer.customer_email,subject:'Transportangebot '+offer.offer_number,text:'Guten Tag, anbei erhalten Sie unser Transportangebot. Bei Rückfragen melden Sie sich gerne.\n\n'+(company.company_name||'Emergency Delivery'),attachments:[{filename:offer.offer_number+'.pdf',content:pdf,contentType:'application/pdf'}]});
+    // SMTP accepted the message; keep the claim if finalization fails to avoid duplicate sends.
+    mailAccepted=true;
+    await q(`UPDATE transport_offers SET status='sent',sent_at=now(),send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[offer.id]);
+    await audit(req,'TRANSPORT_OFFER_SENT',offer.offer_number);res.json({ok:true,offer_number:offer.offer_number});
+  }catch(e){
+    // Release the claim on known failures. A process crash after SMTP accepts mail leaves
+    // the claim in place for manual reconciliation rather than risking an automatic duplicate.
+    if(claimedOfferId&&!mailAccepted){
+      try{await q(`UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[claimedOfferId]);}catch(_releaseError){}
+    }else if(mailAccepted){
+      console.error('SMTP accepted transport offer email, but finalization failed; offer remains claimed for manual reconciliation:',claimedOfferId);
+    }
+    res.status(500).json({error:'Angebot konnte nicht versendet werden'});
+  }
+});
+
+
+// Gmail background import. Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+// GOOGLE_REFRESH_TOKEN and GMAIL_IMPORT_QUERY as deployment environment variables.
+// No credentials are stored in source code; import remains inactive until configured.
+let gmailPollRunning=false;
+async function gmailAccessToken(){
+  const {GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_REFRESH_TOKEN}=process.env;
+  if(!GOOGLE_CLIENT_ID||!GOOGLE_CLIENT_SECRET||!GOOGLE_REFRESH_TOKEN)return null;
+  const form=new URLSearchParams({client_id:GOOGLE_CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'});
+  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
+  if(!response.ok)throw new Error('Gmail OAuth token refresh failed: '+response.status);
+  return (await response.json()).access_token;
+}
+function gmailDecode(data){
+  if(!data)return '';
+  const normalized=data.replace(/-/g,'+').replace(/_/g,'/');
+  return Buffer.from(normalized,'base64').toString('utf8');
+}
+function gmailHeader(headers,name){return (headers||[]).find(h=>String(h.name).toLowerCase()===name.toLowerCase())?.value||''}
+function gmailText(payload){
+  if(!payload)return '';
+  if(payload.mimeType==='text/plain'&&payload.body?.data)return gmailDecode(payload.body.data);
+  for(const part of payload.parts||[]){const found=gmailText(part);if(found)return found}
+  return '';
+}
+async function importGmailTransportRequests(){
+  if(gmailPollRunning||!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.GOOGLE_REFRESH_TOKEN)return;
+  gmailPollRunning=true;
+  try{
+    await ensureTransportOffersSchema();
+    const token=await gmailAccessToken();
+    const query=process.env.GMAIL_IMPORT_QUERY||'newer_than:2d (transport OR transport request OR delivery OR lieferung OR transportanfrage)';
+    const messages=await listGmailMessages({query,token});
+    for(const item of messages){
+      const exists=await q('SELECT id FROM transport_requests WHERE email_message_id=$1',[item.id]);
+      if(exists[0])continue;
+      const detailResponse=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(item.id)+'?format=full',{headers:{authorization:'Bearer '+token}});
+      if(!detailResponse.ok)continue;
+      const msg=await detailResponse.json(),headers=msg.payload?.headers||[];
+      const from=gmailHeader(headers,'From'),subject=gmailHeader(headers,'Subject'),received=msg.internalDate?new Date(Number(msg.internalDate)).toISOString():null;
+      const body=gmailText(msg.payload).slice(0,20000);
+      const email=(from.match(/<([^>]+)>/)||[])[1]||from;
+      const customerEmail=email.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||null;
+      const customerName=from.replace(/<[^>]+>/,'').replace(/"/g,'').trim()||null;
+      const customer=customerEmail?(await q('SELECT id,company FROM customers WHERE lower(email)=lower($1) ORDER BY id LIMIT 1',[customerEmail]))[0]:null;
+      await q(`INSERT INTO transport_requests(email_message_id,email_from,email_subject,email_received_at,customer_id,customer_name,customer_email,notes)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(email_message_id) DO NOTHING`,
+        [item.id,from,subject,received,customer?.id||null,customer?.company||customerName,customerEmail,body||null]);
+    }
+  }catch(e){console.error('Gmail transport import failed:',e.message)}
+  finally{gmailPollRunning=false}
+}
+const gmailImportTimer=setInterval(()=>importGmailTransportRequests(),120000);
+gmailImportTimer.unref?.();
+setTimeout(()=>importGmailTransportRequests(),15000).unref?.();
+app.get('/api/transport-requests/gmail-status',auth,roles('Admin','Dispatcher'),(req,res)=>{
+  const configured=!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REFRESH_TOKEN);
+  res.json({configured,mode:configured?'background-polling':'disabled',interval_seconds:120,reason:configured?null:'Gmail OAuth environment variables are not configured'});
 });
 
 // Single online/server entry point. blitz.cloud supplies PORT (normally 8080).

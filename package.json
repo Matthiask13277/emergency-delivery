@@ -7,7 +7,8 @@
     "start": "electron .",
     "build:win": "electron-builder --win --x64 --publish never",
     "dist": "npm run build:win",
-    "pack": "electron-builder --dir --publish never"
+    "pack": "electron-builder --dir --publish never",
+    "test:gmail-pagination": "node --test tests/gmail-pagination.test.js"
   },
   "devDependencies": {
     "electron": "^38.2.0",

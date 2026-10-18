@@ -1001,4 +1001,45 @@ if ("serviceWorker" in navigator) {
  if("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("/service-worker.js").catch(err=>console.warn("PWA service worker:",err)));
  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",installButton); else installButton();
 })();
-</script></body></html>
+</script>
+<script id="transport-offers-ui-v1">
+(function(){
+  const originalView=window.view;
+  if(typeof originalView!=="function") return;
+  const escHtml=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  async function loadTransportPage(){
+    const c=document.getElementById("c"); if(!c)return;
+    c.innerHTML='<div class="page-head"><div><div class="eyebrow">KOMMUNIKATION</div><h2>Transportanfragen & Angebote</h2><p class="muted">E-Mail-Anfragen prüfen, Preise manuell festlegen und Angebote erst nach ausdrücklicher Freigabe versenden.</p></div><button class="btn primary" id="trReload">Aktualisieren</button></div><div class="panel"><h3>Gmail-Import</h3><p id="trGmailStatus" class="muted">Status wird geladen …</p><p class="muted">Der automatische Import funktioniert erst, wenn die Google-OAuth-Variablen sicher in der Serverumgebung hinterlegt sind.</p></div><div class="panel"><h3>Transportanfrage manuell erfassen</h3><div class="form form-2"><label>Absender-E-Mail<input id="trEmail" type="email" placeholder="kunde@firma.de"></label><label>Betreff<input id="trSubject" placeholder="Transportanfrage"></label><label style="grid-column:1/-1">Anfrage / Transportdetails<input id="trNotes" placeholder="Abholort, Ziel, Ware, Termin …"></label></div><div class="row" style="margin-top:12px"><button class="btn primary" id="trCreate">Anfrage speichern</button></div></div><div class="panel"><h3>Eingegangene Anfragen</h3><div id="trRequests" class="muted">Lade Anfragen …</div></div><div class="panel"><h3>Angebote</h3><div id="trOffers" class="muted">Lade Angebote …</div></div>';
+    document.getElementById("trReload").onclick=loadTransportData;
+    document.getElementById("trCreate").onclick=async()=>{
+      const email=document.getElementById("trEmail").value.trim(),subject=document.getElementById("trSubject").value.trim(),notes=document.getElementById("trNotes").value.trim();
+      if(!email||!subject){alert("Bitte Absender-E-Mail und Betreff ausfüllen.");return}
+      try{await api("/api/transport-requests",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email_from:email,email_subject:subject,customer_email:email,notes})});document.getElementById("trEmail").value="";document.getElementById("trSubject").value="";document.getElementById("trNotes").value="";await loadTransportData();}catch(e){alert("Anfrage konnte nicht gespeichert werden: "+e.message)}
+    };
+    await loadTransportData();
+  }
+  async function loadTransportData(){
+    const status=document.getElementById("trGmailStatus"),requests=document.getElementById("trRequests"),offers=document.getElementById("trOffers");if(!status)return;
+    try{
+      const [g,rs,os]=await Promise.all([api("/api/transport-requests/gmail-status"),api("/api/transport-requests"),api("/api/transport-offers")]);
+      status.textContent=g.configured?"Gmail-OAuth ist konfiguriert. Der Hintergrundimport prüft regelmäßig neue passende Nachrichten.":"Gmail-Import ist noch nicht aktiv: Servervariablen GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET und GOOGLE_REFRESH_TOKEN fehlen.";
+      const rlist=Array.isArray(rs)?rs:(rs.requests||[]);
+      requests.innerHTML=rlist.length?'<div style="overflow-x:auto"><table><thead><tr><th>Datum</th><th>Absender</th><th>Betreff</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'+rlist.map(r=>'<tr><td>'+escHtml(r.email_received_at||r.created_at||"—")+'</td><td>'+escHtml(r.email_from||r.customer_email||"—")+'</td><td>'+escHtml(r.email_subject||"Ohne Betreff")+'</td><td>'+escHtml(r.status||"offen")+'</td><td><button class="btn secondary" data-offer="'+escHtml(r.id)+'">Preis eingeben</button></td></tr>').join("")+'</tbody></table></div>':'Noch keine Transportanfragen vorhanden.';
+      const olist=Array.isArray(os)?os:(os.offers||[]);
+      offers.innerHTML=olist.length?'<div style="overflow-x:auto"><table><thead><tr><th>Angebot</th><th>Anfrage</th><th>Netto</th><th>Brutto</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'+olist.map(o=>'<tr><td>'+escHtml(o.offer_number||o.id)+'</td><td>'+escHtml(o.request_id||"—")+'</td><td>€ '+Number(o.net_amount||0).toFixed(2)+'</td><td>€ '+Number(o.gross_amount||0).toFixed(2)+'</td><td>'+escHtml(o.status||"Entwurf")+'</td><td>'+(o.status==="draft"?'<button class="btn secondary" data-approve="'+escHtml(o.id)+'">Freigeben</button>':"")+(o.status==="approved"?'<button class="btn primary" data-send="'+escHtml(o.id)+'">PDF per E-Mail senden</button>':"")+'</td></tr>').join("")+'</tbody></table></div>':'Noch keine Angebote erstellt.';
+      requests.querySelectorAll("[data-offer]").forEach(b=>b.onclick=()=>createOffer(b.dataset.offer));
+      offers.querySelectorAll("[data-approve]").forEach(b=>b.onclick=async()=>{if(!confirm("Dieses Angebot ausdrücklich zum Versand freigeben?"))return;try{await api("/api/transport-offers/"+encodeURIComponent(b.dataset.approve)+"/approve",{method:"POST"});await loadTransportData()}catch(e){alert("Freigabe fehlgeschlagen: "+e.message)}});
+      offers.querySelectorAll("[data-send]").forEach(b=>b.onclick=async()=>{if(!confirm("Angebot als PDF per E-Mail versenden?"))return;try{await api("/api/transport-offers/"+encodeURIComponent(b.dataset.send)+"/send",{method:"POST"});alert("Versand wurde vom Server bestätigt.");await loadTransportData()}catch(e){alert("Versand fehlgeschlagen: "+e.message)}});
+    }catch(e){status.textContent="Transportdaten konnten nicht geladen werden: "+e.message;requests.textContent="API derzeit nicht verfügbar.";offers.textContent="API derzeit nicht verfügbar."}
+  }
+  async function createOffer(id){
+    const net=prompt("Manuellen Netto-Angebotspreis in EUR eingeben:");if(net===null)return;
+    const amount=Number(net.replace(",","."));if(!Number.isFinite(amount)||amount<0){alert("Bitte einen gültigen nicht-negativen Preis eingeben.");return}
+    const tax=prompt("Steuersatz in Prozent (z. B. 22):","22");if(tax===null)return;
+    const rate=Number(tax.replace(",","."));if(!Number.isFinite(rate)||rate<0||rate>100){alert("Bitte einen gültigen Steuersatz zwischen 0 und 100 eingeben.");return}
+    try{await api("/api/transport-requests/"+encodeURIComponent(id)+"/offer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({net_amount:amount,tax_rate:rate})});alert("Angebot erstellt. Bitte im Bereich Angebote ausdrücklich freigeben, bevor es versendet wird.");await loadTransportData()}catch(e){alert("Angebot konnte nicht erstellt werden: "+e.message)}
+  }
+  window.view=function(p){if(p==="transport"){document.body.classList.remove("driver-mode");originalView("dashboard");const c=document.getElementById("c");if(c){const title=document.querySelector(".brand");if(title)title.textContent="Transportanfragen & Angebote";loadTransportPage()}return}originalView(p);if(p!=="login"&&window.S?.user&&["admin","dispatcher"].includes(String(window.S.user.role||"").toLowerCase())){const groups=document.querySelectorAll(".menu-group");const target=groups[3]||groups[groups.length-1];if(target&&!target.querySelector('[data-transport-nav="1"]')){const b=document.createElement("button");b.className="menu-btn";b.dataset.transportNav="1";b.innerHTML='<span class="ico">⇄</span>Transportanfragen';b.onclick=()=>window.view("transport");target.appendChild(b)}if(target&&!target.querySelector('[data-offers-nav="1"]')){const b=document.createElement("button");b.className="menu-btn";b.dataset.offersNav="1";b.innerHTML='<span class="ico">€</span>Angebote erstellen';b.onclick=()=>window.view("transport");target.appendChild(b)}if(p==="dashboard"){const c=document.getElementById("c");if(c&&!c.querySelector("#edCreateOfferTile")){const tile=document.createElement("button");tile.id="edCreateOfferTile";tile.type="button";tile.className="panel";tile.style.cssText="display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;border:1px solid #fed7aa;background:linear-gradient(135deg,#fff7ed,#ffffff);padding:20px;margin-top:14px;color:#172033";tile.innerHTML='<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:12px;background:#ffedd5;color:#c2410c;font-size:26px;font-weight:700">€</span><span style="display:block"><strong style="display:block;font-size:17px;margin-bottom:5px">Angebote erstellen</strong><span style="display:block;color:#667085;font-size:13px">Transportanfrage auswählen, Preis und Steuersatz eingeben und ein Angebot als Entwurf anlegen.</span></span><span style="margin-left:auto;font-size:22px;color:#c2410c">›</span>';tile.onclick=()=>window.view("transport");c.appendChild(tile)}}}};
+})();
+</script>
+</body></html>
