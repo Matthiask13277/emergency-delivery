@@ -861,7 +861,7 @@ app.patch('/api/stops/:id', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/trips/:id/reorder-stops', auth, roles('Admin','Dispatcher','Driver'), async (req,res) => {
+app.post('/api/trips/:id/reorder-stops', auth, roles('Admin','Dispatcher'), async (req,res) => {
   try {
     const ids = Array.isArray(req.body.stop_ids) ? req.body.stop_ids : [];
     await pool.query('BEGIN');
