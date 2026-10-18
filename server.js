@@ -337,7 +337,7 @@ async function ensureDeliveryDocuments(){
 }
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
 q("select id,name,role from users order by name"),q("select * from customers order by company"),q(req.user.role==="Driver"?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",req.user.role==="Driver"?[req.user.id]:[]),q("select * from vehicles order by name"),
-q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
+q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id where coalesce(d.status,'') <> 'Deleted' order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
 res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
 
 app.get("/api/company-settings",auth,async(req,res)=>{
@@ -571,6 +571,17 @@ app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting",
     await audit(req,"DDT_UPDATED",updated.document_number);
     res.json({ddt:updated,trip:tr});
   }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.delete("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  try{
+    const d=(await q("select id,trip_id,document_number,status from delivery_documents where id=$1",[req.params.id]))[0];
+    if(!d)return res.status(404).json({error:"Lieferschein nicht gefunden"});
+    if(d.status==="Deleted")return res.status(404).json({error:"Lieferschein wurde bereits gelöscht"});
+    await q("update delivery_documents set status='Deleted' where id=$1",[d.id]);
+    await audit(req,"DDT_DELETED",d.document_number+" · Trip "+d.trip_id);
+    res.json({ok:true,documentNumber:d.document_number});
+  }catch(e){res.status(500).json({error:"Lieferschein konnte nicht gelöscht werden."})}
 });
 
 app.get("/api/audit",auth,roles("Admin","Accounting"),async(req,res)=>res.json(await q("select * from audit_log order by created_at desc limit 500")));
@@ -946,7 +957,7 @@ async function v15TripComplete(tripId) {
   if(!d){
     const n=await q("select 'DDT-'||extract(year from current_date)::int||'-'||lpad((coalesce(max(cast(split_part(document_number,'-',3) as int)),0)+1)::text,4,'0') n from delivery_documents");
     d=(await q("insert into delivery_documents(trip_id,document_number,proof_complete) values($1,$2,true) returning *",[tripId,n[0].n]))[0];
-  } else if(!d.proof_complete) {
+  } else if(!d.proof_complete && d.status!=="Deleted") {
     d=(await q("update delivery_documents set proof_complete=true,status='Completed' where id=$1 returning *",[d.id]))[0];
   }
   if(Number(t.price_net)>0){
