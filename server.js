@@ -132,6 +132,7 @@ async function ensureV183Columns(){
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_language text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS notes text`);
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS delivery_instructions text`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS email text`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS address text`);
   await q(`ALTER TABLE users ADD COLUMN IF NOT EXISTS postal_code text`);
@@ -3322,22 +3323,19 @@ app.get("/api/customers/:id/360",auth,roles("Admin","Dispatcher","Accounting"),a
 // V65 customer management
 app.delete("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
-    const used=await q("select count(*)::int n from trips where customer_id=$1",[req.params.id]);
-    const orders=await q("select count(*)::int n from orders where customer_id=$1",[req.params.id]);
-    const invoices=await q("select count(*)::int n from invoices where customer_id=$1",[req.params.id]);
-    if(Number(used[0]?.n||0)+Number(orders[0]?.n||0)+Number(invoices[0]?.n||0)>0)
-      return res.status(409).json({error:"Kunde kann nicht gelöscht werden, weil bereits Aufträge, Touren oder Rechnungen vorhanden sind. Bitte zuerst archivieren."});
-    const r=await q("delete from customers where id=$1 returning id,company",[req.params.id]);
-    if(!r.length)return res.status(404).json({error:"Kunde nicht gefunden"});
-    await audit(req,"CUSTOMER_DELETED",r[0].company);res.json({ok:true});
-  }catch(e){res.status(500).json({error:e.message})}
+    await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
+    const r=await q("update customers set archived_at=coalesce(archived_at,now()) where id=$1 and archived_at is null returning id,company",[req.params.id]);
+    if(!r.length)return res.status(404).json({error:"Kunde nicht gefunden oder bereits archiviert"});
+    await audit(req,"CUSTOMER_ARCHIVED",r[0].company);
+    res.json({ok:true,archived:true,message:"Kunde wurde aus der aktiven Kundenliste entfernt. Aufträge, Touren und Rechnungen bleiben erhalten."});
+  }catch(e){res.status(500).json({error:"Kunde konnte nicht archiviert werden."})}
 });
 app.get("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     const rows=await q(`select c.*,coalesce(sum(i.gross) filter(where i.status in('Open','Overdue')),0) outstanding,
       count(distinct o.id)::int order_count
       from customers c left join invoices i on i.customer_id=c.id left join orders o on o.customer_id=c.id
-      group by c.id order by c.company`);
+      where c.archived_at is null group by c.id order by c.company`);
     res.json(rows)
   }catch(e){res.status(500).json({error:e.message})}
 });
