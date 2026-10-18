@@ -441,7 +441,7 @@ app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher","Accounting"),as
     res.json({ordered:order.map((x,i)=>({position:i+1,id:x.id,tripNumber:x.trip_number,customer:x.company,address:x.stop_address||x.customer_address,city:x.stop_city||x.customer_city})),mapsUrl:url});
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/trips/:id",auth,async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=req.user.role==="Driver"?["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"]:["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
+app.patch("/api/trips/:id",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=req.user.role==="Driver"?["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"]:["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
 app.delete("/api/trips/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const t=(await q("select id,trip_number,status from trips where id=$1",[req.params.id]))[0];
@@ -599,7 +599,7 @@ app.get("/api/trips/:id/stops",auth,async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message})}
 });
 
-app.patch("/api/stops/:id",auth,async(req,res)=>{
+app.patch("/api/stops/:id",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   try{
     const s=(await q("select ts.id,t.driver_id from trip_stops ts join trips t on t.id=ts.trip_id where ts.id=$1",[req.params.id]))[0];
     if(!s)return res.status(404).json({error:"Stop nicht gefunden"});
@@ -609,7 +609,7 @@ app.patch("/api/stops/:id",auth,async(req,res)=>{
     res.json(r[0]);
   }catch(e){res.status(500).json({error:e.message||"Stop konnte nicht aktualisiert werden"})}
 });
-app.post("/api/sync",auth,async(req,res)=>{
+app.post("/api/sync",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   const results=[];
   for(const a of (Array.isArray(req.body?.actions)?req.body.actions:[])){
     try{
@@ -757,7 +757,7 @@ app.post('/api/orders/create-trip', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/trips/:id/time', auth, async (req,res) => {
+app.post('/api/trips/:id/time', auth, roles('Admin','Dispatcher','Driver'), async (req,res) => {
   try {
     const { event_type, stop_id=null, note=null } = req.body;
     const allowed = ['shift_start','arrived','departed','trip_start','trip_end'];
@@ -861,7 +861,7 @@ app.patch('/api/stops/:id', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/trips/:id/reorder-stops', auth, async (req,res) => {
+app.post('/api/trips/:id/reorder-stops', auth, roles('Admin','Dispatcher','Driver'), async (req,res) => {
   try {
     const ids = Array.isArray(req.body.stop_ids) ? req.body.stop_ids : [];
     await pool.query('BEGIN');
@@ -927,7 +927,7 @@ app.post('/api/notifications/:id/read', auth, async (req,res) => {
 });
 
 // Notify relevant roles whenever dispatch assignment changes.
-app.post('/api/trips/:id/dispatch-notify', auth, async (req,res)=>{
+app.post('/api/trips/:id/dispatch-notify', auth, roles('Admin','Dispatcher'), async (req,res)=>{
   try{
     const {rows}=await pool.query(
       `SELECT t.id,t.driver_id,t.vehicle_id,u.name AS driver_name,v.plate
@@ -2413,7 +2413,7 @@ app.post("/api/users",auth,roles("Admin"),async(req,res)=>{
     await audit(req,"USER_CREATED",username);res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.post("/api/employee-time",auth,async(req,res)=>{
+app.post("/api/employee-time",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   try{
     const target=req.user.role==="Admin"&&req.body.user_id?req.body.user_id:req.user.id;
     const type=String(req.body.entry_type||"");
