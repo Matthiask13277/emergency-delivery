@@ -47,3 +47,19 @@ test('reports Gmail list HTTP failures', async () => {
     /Gmail message list failed: 429/
   );
 });
+
+test('stops if Gmail repeats a page token', async () => {
+  let calls = 0;
+  await assert.rejects(
+    listGmailMessages({
+      query: 'delivery',
+      token: 'token',
+      fetchImpl: async () => {
+        calls++;
+        return {ok: true, json: async () => ({messages: [{id: String(calls)}], nextPageToken: 'same-token'})};
+      }
+    }),
+    /Gmail pagination repeated a page token/
+  );
+  assert.equal(calls, 2);
+});
