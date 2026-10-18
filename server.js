@@ -654,7 +654,7 @@ app.post("/api/sync",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
 
 
 // V12: order workflow, automatic trip creation and driver time events
-app.get('/api/orders', auth, async (req,res) => {
+app.get('/api/orders', auth, roles('Admin','Dispatcher','Accounting'), async (req,res) => {
   try {
     const { rows } = await pool.query(`
       SELECT o.*, c.company AS customer_name
@@ -665,7 +665,7 @@ app.get('/api/orders', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/orders', auth, async (req,res) => {
+app.post('/api/orders', auth, roles('Admin','Dispatcher'), async (req,res) => {
   try {
     const { customer_id, reference, pickup_address, pickup_city, delivery_address, delivery_city,
             weight_kg, pieces, price_net } = req.body;
@@ -680,7 +680,7 @@ app.post('/api/orders', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.patch('/api/orders/:id', auth, async (req,res) => {
+app.patch('/api/orders/:id', auth, roles('Admin','Dispatcher'), async (req,res) => {
   try {
     const allowed = [
       'reference','customer_id','pickup_address','pickup_city','delivery_address','delivery_city',
