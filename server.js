@@ -6731,20 +6731,37 @@ app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher',
 app.patch('/api/transport-offers/:id',auth,roles('Admin','Dispatcher'),async(req,res)=>{
   try{
     await ensureTransportOffersSchema();
-    const net=Number(req.body?.net_amount),tax=Number(req.body?.tax_rate);
+    const b=req.body||{};
+    const net=Number(b.net_amount),tax=Number(b.tax_rate);
     if(!Number.isFinite(net)||net<0||!Number.isFinite(tax)||tax<0||tax>100)return res.status(400).json({error:'Bitte gültigen Nettobetrag und Steuersatz (0–100 %) eingeben'});
-    const current=(await q('SELECT id,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
+    const current=(await q('SELECT id,request_id,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
     if(!current)return res.status(404).json({error:'Angebot nicht gefunden'});
     if(!['draft','approved'].includes(current.status)||current.send_claimed_at)return res.status(409).json({error:'Dieses Angebot ist bereits versendet/abgeschlossen oder der Versand läuft. Es kann nicht mehr bearbeitet werden.'});
+    const request=(await q('SELECT * FROM transport_requests WHERE id=$1',[current.request_id]))[0];
+    if(!request)return res.status(404).json({error:'Zugehörige Transportanfrage nicht gefunden'});
+    const validUntil=String(b.valid_until||'').trim()||null;
+    if(validUntil&&!/^\d{4}-\d{2}-\d{2}$/.test(validUntil))return res.status(400).json({error:'Bitte ein gültiges Gültigkeitsdatum verwenden'});
+    const distance=b.distance_km==null||String(b.distance_km).trim()===''?null:Number(String(b.distance_km).replace(',','.'));
+    if(distance!==null&&(!Number.isFinite(distance)||distance<0))return res.status(400).json({error:'Bitte eine gültige Kilometerzahl eingeben'});
     const taxAmount=Math.round(net*tax)/100;
     const gross=Math.round((net+taxAmount)*100)/100;
-    const validUntil=String(req.body?.valid_until||'').trim()||null;
-    if(validUntil&&!/^\d{4}-\d{2}-\d{2}$/.test(validUntil))return res.status(400).json({error:'Bitte ein gültiges Gültigkeitsdatum verwenden'});
-    const terms=String(req.body?.terms||'').trim()||null;
+    const terms=String(b.terms||'').trim()||null;
+    const field=(key)=>Object.prototype.hasOwnProperty.call(b,key)?(String(b[key]??'').trim()||null):request[key];
+    const updatedRequest=(await q(`UPDATE transport_requests SET
+      customer_name=$2,customer_email=$3,customer_phone=$4,email_subject=$5,
+      pickup_address=$6,pickup_city=$7,delivery_address=$8,delivery_city=$9,
+      goods_description=$10,goods_quantity=$11,goods_weight=$12,requested_date=$13,
+      distance_km=$14,notes=$15,updated_at=now()
+      WHERE id=$1 RETURNING *`,[
+      request.id,field('customer_name'),field('customer_email'),field('customer_phone'),field('email_subject'),
+      field('pickup_address'),field('pickup_city'),field('delivery_address'),field('delivery_city'),
+      field('goods_description'),field('goods_quantity'),field('goods_weight'),field('requested_date'),
+      Object.prototype.hasOwnProperty.call(b,'distance_km')?distance:request.distance_km,field('notes')
+    ]))[0];
     const updated=(await q(`UPDATE transport_offers SET net_amount=$2,tax_rate=$3,tax_amount=$4,gross_amount=$5,valid_until=$6,terms=$7,status='draft',approved_at=NULL,updated_at=now() WHERE id=$1 AND status IN ('draft','approved') AND send_claimed_at IS NULL RETURNING *`,[req.params.id,net,tax,taxAmount,gross,validUntil,terms]))[0];
     if(!updated)return res.status(409).json({error:'Angebot wurde zwischenzeitlich geändert; bitte aktualisieren'});
-    await audit(req,'TRANSPORT_OFFER_EDITED',updated.offer_number);
-    res.json(updated);
+    await audit(req,'TRANSPORT_OFFER_EDITED',updated.offer_number+' / '+(updatedRequest.customer_name||updatedRequest.email_subject||'Transportdaten geändert'));
+    res.json({...updated,request:updatedRequest});
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),async(req,res)=>{
