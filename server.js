@@ -6874,3 +6874,5 @@ const server=app.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`Emergency Delivery local/online server listening on ${PORT}`);
 });
 module.exports={server};
+
+// Redeploy marker: duplicate PDF buffer declaration was removed; trigger a fresh hosted build.
