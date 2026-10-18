@@ -6635,6 +6635,54 @@ app.get('/api/transport-offers',auth,roles('Admin','Dispatcher','Accounting'),as
   try{await ensureTransportOffersSchema();res.json(await q(`SELECT o.*,r.customer_name,r.customer_email,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id ORDER BY o.created_at DESC LIMIT 300`));}
   catch(e){res.status(500).json({error:e.message})}
 });
+app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
+  try{
+    await ensureTransportOffersSchema();
+    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[req.params.id]))[0];
+    if(!offer)return res.status(404).json({error:'Angebot nicht gefunden'});
+    if(offer.status==='sent'||offer.status==='accepted'||offer.status==='declined')return res.status(409).json({error:'Dieses Angebot wurde bereits abgeschlossen und kann nicht mehr als Entwurf geprüft werden'});
+    const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
+    const PDFDocument=require('pdfkit'),chunks=[];const doc=new PDFDocument({size:'A4',margin:48});
+    doc.on('data',c=>chunks.push(c));const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
+    await v185PdfLogo(doc,company);
+    doc.fontSize(18).font('Helvetica-Bold').text('ANGEBOT');doc.moveDown();
+    doc.fontSize(10).font('Helvetica').text('Angebotsnummer: '+offer.offer_number);
+    doc.text('Kunde: '+(offer.customer_name||offer.customer_email||'Nicht angegeben'));
+    if(company.company_name)doc.text(company.company_name);
+    if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
+    doc.moveDown().text('Transportanfrage: '+(offer.email_subject||'Transport'));
+    doc.moveDown().text('Nettobetrag: '+Number(offer.net_amount).toFixed(2)+' EUR');
+    doc.text('Steuer ('+Number(offer.tax_rate).toFixed(2)+'%): '+Number(offer.tax_amount).toFixed(2)+' EUR');
+    doc.font('Helvetica-Bold').text('Gesamtbetrag: '+Number(offer.gross_amount).toFixed(2)+' EUR');
+    if(offer.valid_until)doc.moveDown().font('Helvetica').text('Angebot gültig bis: '+String(offer.valid_until).slice(0,10));
+    if(offer.terms)doc.moveDown().text('Bedingungen: '+offer.terms);
+    doc.end();await finished;
+    const pdf=Buffer.concat(chunks);
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','inline; filename="'+String(offer.offer_number).replace(/[^a-zA-Z0-9_-]/g,'_')+'.pdf"');
+    res.setHeader('Cache-Control','no-store');
+    res.send(pdf);
+  }catch(e){res.status(500).json({error:'PDF-Vorschau konnte nicht erstellt werden'})}
+});
+app.patch('/api/transport-offers/:id',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  try{
+    await ensureTransportOffersSchema();
+    const net=Number(req.body?.net_amount),tax=Number(req.body?.tax_rate);
+    if(!Number.isFinite(net)||net<0||!Number.isFinite(tax)||tax<0||tax>100)return res.status(400).json({error:'Bitte gültigen Nettobetrag und Steuersatz (0–100 %) eingeben'});
+    const current=(await q('SELECT id,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
+    if(!current)return res.status(404).json({error:'Angebot nicht gefunden'});
+    if(!['draft','approved'].includes(current.status)||current.send_claimed_at)return res.status(409).json({error:'Dieses Angebot ist bereits versendet/abgeschlossen oder der Versand läuft. Es kann nicht mehr bearbeitet werden.'});
+    const taxAmount=Math.round(net*tax)/100;
+    const gross=Math.round((net+taxAmount)*100)/100;
+    const validUntil=String(req.body?.valid_until||'').trim()||null;
+    if(validUntil&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(validUntil))return res.status(400).json({error:'Bitte ein gültiges Gültigkeitsdatum verwenden'});
+    const terms=String(req.body?.terms||'').trim()||null;
+    const updated=(await q(`UPDATE transport_offers SET net_amount=$2,tax_rate=$3,tax_amount=$4,gross_amount=$5,valid_until=$6,terms=$7,status='draft',approved_at=NULL,updated_at=now() WHERE id=$1 AND status IN ('draft','approved') AND send_claimed_at IS NULL RETURNING *`,[req.params.id,net,tax,taxAmount,gross,validUntil,terms]))[0];
+    if(!updated)return res.status(409).json({error:'Angebot wurde zwischenzeitlich geändert; bitte aktualisieren'});
+    await audit(req,'TRANSPORT_OFFER_EDITED',updated.offer_number);
+    res.json(updated);
+  }catch(e){res.status(400).json({error:e.message})}
+});
 app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),async(req,res)=>{
   try{
     const rows=await q(`UPDATE transport_offers SET status='approved',approved_at=now(),updated_at=now() WHERE id=$1 AND status='draft' RETURNING *`,[req.params.id]);
