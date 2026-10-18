@@ -6568,6 +6568,9 @@ async function ensureTransportOffersSchema(){
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`);
+  await q(`ALTER TABLE transport_requests ADD COLUMN IF NOT EXISTS distance_km numeric(10,2)`);
+  await q(`ALTER TABLE transport_requests ADD COLUMN IF NOT EXISTS goods_quantity text`);
+  await q(`ALTER TABLE transport_requests ADD COLUMN IF NOT EXISTS goods_weight text`);
   await q(`CREATE TABLE IF NOT EXISTS transport_offers(
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id uuid NOT NULL REFERENCES transport_requests(id) ON DELETE CASCADE,
@@ -6608,9 +6611,11 @@ app.post('/api/transport-requests',auth,roles('Admin','Dispatcher'),async(req,re
       const found=await q('SELECT id FROM customers WHERE lower(email)=lower($1) ORDER BY id LIMIT 1',[b.customer_email]);
       if(found[0])customerId=found[0].id;
     }
-    const rows=await q(`INSERT INTO transport_requests(email_message_id,email_from,email_subject,email_received_at,customer_id,customer_name,customer_email,customer_phone,pickup_address,pickup_city,delivery_address,delivery_city,goods_description,requested_date,notes)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [b.email_message_id||null,b.email_from||null,b.email_subject||null,b.email_received_at||null,customerId,b.customer_name||null,b.customer_email||null,b.customer_phone||null,b.pickup_address||null,b.pickup_city||null,b.delivery_address||null,b.delivery_city||null,b.goods_description||null,b.requested_date||null,b.notes||null]);
+    const distance=b.distance_km==null||String(b.distance_km).trim()===''?null:Number(String(b.distance_km).replace(',','.'));
+    if(distance!==null&&(!Number.isFinite(distance)||distance<0))return res.status(400).json({error:'Bitte eine gültige Kilometerzahl eingeben'});
+    const rows=await q(`INSERT INTO transport_requests(email_message_id,email_from,email_subject,email_received_at,customer_id,customer_name,customer_email,customer_phone,pickup_address,pickup_city,delivery_address,delivery_city,goods_description,requested_date,notes,distance_km,goods_quantity,goods_weight)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+      [b.email_message_id||null,b.email_from||null,b.email_subject||null,b.email_received_at||null,customerId,b.customer_name||null,b.customer_email||b.email_from||null,b.customer_phone||null,b.pickup_address||null,b.pickup_city||null,b.delivery_address||null,b.delivery_city||null,b.goods_description||null,b.requested_date||null,b.notes||null,distance,b.goods_quantity||null,b.goods_weight||null]);
     await audit(req,'TRANSPORT_REQUEST_CREATED',rows[0].email_subject||rows[0].customer_name||rows[0].id);
     res.status(201).json(rows[0]);
   }catch(e){res.status(400).json({error:e.message})}
@@ -6651,6 +6656,14 @@ app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher',
     if(company.company_name)doc.text(company.company_name);
     if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
     doc.moveDown().text('Transportanfrage: '+(offer.email_subject||'Transport'));
+    const addressRows=[['Abholung',offer.pickup_address,offer.pickup_city],['Lieferung',offer.delivery_address,offer.delivery_city]];
+    for(const [label,address,city] of addressRows){if(address||city)doc.moveDown(0.3).font('Helvetica-Bold').text(label+': ').font('Helvetica').text([address,city].filter(Boolean).join(', '));}
+    if(offer.goods_description)doc.moveDown(0.3).text('Ware: '+offer.goods_description);
+    if(offer.goods_quantity)doc.text('Menge: '+offer.goods_quantity);
+    if(offer.goods_weight)doc.text('Gewicht: '+offer.goods_weight);
+    if(offer.requested_date)doc.text('Gewünschter Abholtermin: '+String(offer.requested_date).slice(0,10));
+    if(offer.distance_km!==null&&offer.distance_km!==undefined)doc.text('Transportstrecke: '+Number(offer.distance_km).toFixed(2)+' km');
+    if(offer.notes)doc.moveDown(0.3).text('Zusätzliche Hinweise: '+offer.notes);
     doc.moveDown().text('Nettobetrag: '+Number(offer.net_amount).toFixed(2)+' EUR');
     doc.text('Steuer ('+Number(offer.tax_rate).toFixed(2)+'%): '+Number(offer.tax_amount).toFixed(2)+' EUR');
     doc.font('Helvetica-Bold').text('Gesamtbetrag: '+Number(offer.gross_amount).toFixed(2)+' EUR');
@@ -6716,6 +6729,14 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     doc.text('Kunde: '+(offer.customer_name||offer.customer_email));
     if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
     doc.moveDown().text('Transportanfrage: '+(offer.email_subject||'Transport'));
+    const addressRows=[['Abholung',offer.pickup_address,offer.pickup_city],['Lieferung',offer.delivery_address,offer.delivery_city]];
+    for(const [label,address,city] of addressRows){if(address||city)doc.moveDown(0.3).font('Helvetica-Bold').text(label+': ').font('Helvetica').text([address,city].filter(Boolean).join(', '));}
+    if(offer.goods_description)doc.moveDown(0.3).text('Ware: '+offer.goods_description);
+    if(offer.goods_quantity)doc.text('Menge: '+offer.goods_quantity);
+    if(offer.goods_weight)doc.text('Gewicht: '+offer.goods_weight);
+    if(offer.requested_date)doc.text('Gewünschter Abholtermin: '+String(offer.requested_date).slice(0,10));
+    if(offer.distance_km!==null&&offer.distance_km!==undefined)doc.text('Transportstrecke: '+Number(offer.distance_km).toFixed(2)+' km');
+    if(offer.notes)doc.moveDown(0.3).text('Zusätzliche Hinweise: '+offer.notes);
     doc.moveDown().text('Nettobetrag: '+Number(offer.net_amount).toFixed(2)+' EUR');
     doc.text('Steuer ('+Number(offer.tax_rate).toFixed(2)+'%): '+Number(offer.tax_amount).toFixed(2)+' EUR');
     doc.font('Helvetica-Bold').text('Gesamtbetrag: '+Number(offer.gross_amount).toFixed(2)+' EUR');
