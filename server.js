@@ -337,7 +337,7 @@ async function ensureDeliveryDocuments(){
   }
 }
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
-q("select id,name,role from users order by name"),q("select * from customers order by company"),q(req.user.role==="Driver"?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",req.user.role==="Driver"?[req.user.id]:[]),q("select * from vehicles order by name"),
+q("select id,name,role from users order by name"),q("select * from customers where archived_at is null order by company"),q(req.user.role==="Driver"?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",req.user.role==="Driver"?[req.user.id]:[]),q("select * from vehicles order by name"),
 q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id where coalesce(d.status,'') <> 'Deleted' order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
 res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
 
@@ -3312,7 +3312,7 @@ app.get("/api/customers/:id/360",auth,roles("Admin","Dispatcher","Accounting"),a
     if(!customer)return res.status(404).json({error:"Kunde nicht gefunden"});
     const orders=await q(`select o.*,t.trip_number,t.status trip_status from orders o left join trips t on t.id=o.planned_trip_id where o.customer_id=$1 order by o.created_at desc limit 100`,[id]);
     const invoices=await q(`select i.*,t.trip_number from invoices i left join trips t on t.id=i.trip_id where i.customer_id=$1 order by i.issue_date desc limit 100`,[id]);
-    const ddts=await q(`select d.*,t.trip_number from delivery_documents d join trips t on t.id=d.trip_id where t.customer_id=$1 order by d.issued_at desc limit 100`,[id]);
+    const ddts=await q(`select d.*,t.trip_number from delivery_documents d join trips t on t.id=d.trip_id where t.customer_id=$1 and coalesce(d.status,'') <> 'Deleted' order by d.issued_at desc limit 100`,[id]);
     const emails=await q(`select * from email_outbox where customer_id=$1 order by queued_at desc limit 100`,[id]);
     const totals=(await q(`select coalesce(sum(gross),0) total_billed,coalesce(sum(case when status in('Open','Overdue') then gross else 0 end),0) outstanding from invoices where customer_id=$1`,[id]))[0];
     res.json({customer,orders,invoices,ddts,emails,totals})
@@ -3324,8 +3324,8 @@ app.get("/api/customers/:id/360",auth,roles("Admin","Dispatcher","Accounting"),a
 app.delete("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
-    const r=await q("update customers set archived_at=coalesce(archived_at,now()) where id=$1 and archived_at is null returning id,company",[req.params.id]);
-    if(!r.length)return res.status(404).json({error:"Kunde nicht gefunden oder bereits archiviert"});
+    const r=await q("update customers set archived_at=coalesce(archived_at,now()) where id=$1 returning id,company,archived_at",[req.params.id]);
+    if(!r.length)return res.status(404).json({error:"Kunde nicht gefunden"});
     await audit(req,"CUSTOMER_ARCHIVED",r[0].company);
     res.json({ok:true,archived:true,message:"Kunde wurde aus der aktiven Kundenliste entfernt. Aufträge, Touren und Rechnungen bleiben erhalten."});
   }catch(e){res.status(500).json({error:"Kunde konnte nicht archiviert werden."})}
