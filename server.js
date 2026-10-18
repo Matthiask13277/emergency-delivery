@@ -762,12 +762,19 @@ app.post('/api/trips/:id/time', auth, roles('Admin','Dispatcher','Driver'), asyn
     const { event_type, stop_id=null, note=null } = req.body;
     const allowed = ['shift_start','arrived','departed','trip_start','trip_end'];
     if (!allowed.includes(event_type)) return res.status(400).json({error:'Ungültiger Zeitstempel.'});
+    const trip=(await q("select id,driver_id from trips where id=$1",[req.params.id]))[0];
+    if(!trip)return res.status(404).json({error:'Tour nicht gefunden.'});
+    if(req.user.role==='Driver' && trip.driver_id!==req.user.id)return res.status(403).json({error:'Keine Berechtigung für diese Tour.'});
+    if(stop_id){
+      const stop=(await q("select id from trip_stops where id=$1 and trip_id=$2",[stop_id,trip.id]))[0];
+      if(!stop)return res.status(400).json({error:'Stopp gehört nicht zu dieser Tour.'});
+    }
     const { rows } = await pool.query(`
       INSERT INTO driver_time_events(trip_id,stop_id,driver_id,event_type,note)
       VALUES($1,$2,$3,$4,$5) RETURNING *
-    `,[req.params.id,stop_id,req.user.id,event_type,note]);
-    if (event_type==='arrived' && stop_id) await pool.query(`UPDATE trip_stops SET arrived_at=NOW(),status='Arrived' WHERE id=$1`,[stop_id]);
-    if (event_type==='departed' && stop_id) await pool.query(`UPDATE trip_stops SET departed_at=NOW() WHERE id=$1`,[stop_id]);
+    `,[trip.id,stop_id,req.user.id,event_type,String(note||'').slice(0,500)]);
+    if (event_type==='arrived' && stop_id) await pool.query(`UPDATE trip_stops SET arrived_at=NOW(),status='Arrived' WHERE id=$1 AND trip_id=$2`,[stop_id,trip.id]);
+    if (event_type==='departed' && stop_id) await pool.query(`UPDATE trip_stops SET departed_at=NOW() WHERE id=$1 AND trip_id=$2`,[stop_id,trip.id]);
     res.status(201).json(rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
