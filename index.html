@@ -1032,7 +1032,20 @@ if ("serviceWorker" in navigator) {
       const olist=Array.isArray(os)?os:(os.offers||[]);
       offers.innerHTML=olist.length?'<div style="overflow-x:auto"><table><thead><tr><th>Angebot</th><th>Anfrage</th><th>Netto</th><th>Brutto</th><th>Status</th><th>Aktion</th></tr></thead><tbody>'+olist.map(o=>'<tr><td>'+escHtml(o.offer_number||o.id)+'</td><td>'+escHtml(o.request_id||"—")+'</td><td>€ '+Number(o.net_amount||0).toFixed(2)+'</td><td>€ '+Number(o.gross_amount||0).toFixed(2)+'</td><td>'+escHtml(o.status||"Entwurf")+'</td><td>'+(["draft","approved"].includes(o.status)?'<button class="btn secondary" data-preview="'+escHtml(o.id)+'">PDF-Vorschau</button> <button class="btn secondary" data-edit="'+escHtml(o.id)+'">Bearbeiten</button> ':"")+(o.status==="draft"?'<button class="btn secondary" data-approve="'+escHtml(o.id)+'">Freigeben</button>':"")+(o.status==="approved"?'<button class="btn primary" data-send="'+escHtml(o.id)+'">PDF per E-Mail senden</button>':"")+'</td></tr>').join("")+'</tbody></table></div>':'Noch keine Angebote erstellt.';
       requests.querySelectorAll("[data-offer]").forEach(b=>b.onclick=()=>createOffer(b.dataset.offer));
-      offers.querySelectorAll("[data-preview]").forEach(b=>b.onclick=()=>{const w=window.open("/api/transport-offers/"+encodeURIComponent(b.dataset.preview)+"/pdf-preview","_blank");if(!w)alert("Die PDF-Vorschau wurde vom Browser blockiert. Bitte Pop-ups für diese App erlauben.")});
+      offers.querySelectorAll("[data-preview]").forEach(b=>b.onclick=async()=>{
+        const w=window.open("about:blank","_blank");if(!w){alert("Bitte Pop-ups für diese App erlauben.");return}
+        w.document.write("<p style='font:16px sans-serif;padding:24px'>PDF wird geladen …</p>");
+        try{
+          const url="/api/transport-offers/"+encodeURIComponent(b.dataset.preview)+"/pdf-preview";
+          const headers={Authorization:"Bearer "+T};if(OT)headers["X-Offline-Authorization"]=OT;
+          let r=await fetch(url,{headers});
+          if(r.status===401&&OT)r=await fetch(url,{headers:{"Authorization":"Bearer "+OT}});
+          if(!r.ok){let message="HTTP "+r.status;try{const d=await r.json();message=d.error||message}catch{}throw new Error(message)}
+          const blob=await r.blob();if(!blob.type.includes("pdf"))throw new Error("Server hat keine PDF-Datei zurückgegeben");
+          const objectUrl=URL.createObjectURL(blob);w.location.href=objectUrl;
+          setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
+        }catch(e){w.close();alert("PDF-Vorschau konnte nicht geöffnet werden: "+e.message)}
+      });
       offers.querySelectorAll("[data-edit]").forEach(b=>b.onclick=async()=>{
         const offer=olist.find(o=>String(o.id)===String(b.dataset.edit));if(!offer)return;
         const netText=prompt("Netto-Preis in EUR:",String(Number(offer.net_amount||0).toFixed(2)));if(netText===null)return;
