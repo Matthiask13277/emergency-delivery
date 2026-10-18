@@ -4881,7 +4881,45 @@ async function ensureNotificationEventSchema(){
   )`);
   await q(`CREATE INDEX IF NOT EXISTS idx_stop_event_links_stop ON stop_event_links(stop_id,created_at DESC)`);
 }
+
 runSchemaInitializer("V110-V114 notification/event",ensureNotificationEventSchema);
+
+// V120 notification center API: authenticated users can only read their own inbox.
+app.get("/api/notifications/inbox-v120",auth,async(req,res)=>{
+  try{
+    await ensureNotificationEventSchema();
+    const result=await pool.query(
+      `SELECT id,source,source_id,title,message,severity,read_at,created_at
+       FROM notification_inbox WHERE user_id=$1
+       ORDER BY created_at DESC LIMIT 100`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  }catch(e){res.status(500).json({error:"Benachrichtigungen konnten nicht geladen werden."})}
+});
+app.post("/api/notifications/inbox-v120/read-all",auth,async(req,res)=>{
+  try{
+    await ensureNotificationEventSchema();
+    const result=await pool.query(
+      `UPDATE notification_inbox SET read_at=NOW()
+       WHERE user_id=$1 AND read_at IS NULL RETURNING id`,
+      [req.user.id]
+    );
+    res.json({ok:true,updated:result.rowCount||0});
+  }catch(e){res.status(500).json({error:"Benachrichtigungen konnten nicht aktualisiert werden."})}
+});
+app.post("/api/notifications/inbox-v120/:id/read",auth,async(req,res)=>{
+  try{
+    await ensureNotificationEventSchema();
+    const result=await pool.query(
+      `UPDATE notification_inbox SET read_at=NOW()
+       WHERE id=$1 AND user_id=$2 RETURNING id,read_at`,
+      [req.params.id,req.user.id]
+    );
+    if(!result.rows.length)return res.status(404).json({error:"Benachrichtigung nicht gefunden."});
+    res.json({ok:true,...result.rows[0]});
+  }catch(e){res.status(500).json({error:"Benachrichtigung konnte nicht aktualisiert werden."})}
+});
 
 // // // V111 automatic event -> inbox bridge
 async function v111CreateInboxEvent(eventKey,source,sourceId,title,message,severity="info",rolesList=["Admin","Dispatcher"]){
