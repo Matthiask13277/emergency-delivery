@@ -6721,7 +6721,7 @@ app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher',
     if(offer.status==='sent'||offer.status==='accepted'||offer.status==='declined')return res.status(409).json({error:'Dieses Angebot wurde bereits abgeschlossen und kann nicht mehr als Entwurf geprüft werden'});
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
     const pdf=await buildTransportOfferPdf(offer,company);
-    const pdf=Buffer.concat(chunks);
+    
     res.setHeader('Content-Type','application/pdf');
     res.setHeader('Content-Disposition','inline; filename="'+String(offer.offer_number).replace(/[^a-zA-Z0-9_-]/g,'_')+'.pdf"');
     res.setHeader('Cache-Control','no-store');
@@ -6789,7 +6789,7 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     if(!offer.customer_email){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});}
     const transport=smtpTransport();if(!transport){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});}
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
-    const pdf=await buildTransportOfferPdf(offer,company);const pdf=Buffer.concat(chunks);
+    const pdf=await buildTransportOfferPdf(offer,company);
     await transport.sendMail({from:smtpCfg.from||smtpCfg.user,to:offer.customer_email,subject:'Transportangebot '+offer.offer_number,text:'Guten Tag, anbei erhalten Sie unser Transportangebot. Bei Rückfragen melden Sie sich gerne.\n\n'+(company.company_name||'Emergency Delivery'),attachments:[{filename:offer.offer_number+'.pdf',content:pdf,contentType:'application/pdf'}]});
     // SMTP accepted the message; keep the claim if finalization fails to avoid duplicate sends.
     mailAccepted=true;
