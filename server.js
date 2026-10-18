@@ -352,7 +352,7 @@ const companyData=company[0]||{};
 if(isDriver){delete companyData.iban;delete companyData.bic;delete companyData.bank_name;delete companyData.tax_number;delete companyData.vat_id;}
 res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:companyData})});
 
-app.get("/api/company-settings",auth,async(req,res)=>{
+app.get("/api/company-settings",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{await ensureCompanySettings();const r=await q("select * from company_settings where id=1");res.json(r[0]||{});}catch(e){res.status(500).json({error:e.message})}
 });
 app.patch("/api/company-settings",auth,roles("Admin"),async(req,res)=>{
