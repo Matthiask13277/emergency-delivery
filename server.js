@@ -6643,7 +6643,7 @@ app.get('/api/transport-offers',auth,roles('Admin','Dispatcher','Accounting'),as
 app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
   try{
     await ensureTransportOffersSchema();
-    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[req.params.id]))[0];
+    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject,r.pickup_address,r.pickup_city,r.delivery_address,r.delivery_city,r.goods_description,r.goods_quantity,r.goods_weight,r.requested_date,r.distance_km,r.notes FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[req.params.id]))[0];
     if(!offer)return res.status(404).json({error:'Angebot nicht gefunden'});
     if(offer.status==='sent'||offer.status==='accepted'||offer.status==='declined')return res.status(409).json({error:'Dieses Angebot wurde bereits abgeschlossen und kann nicht mehr als Entwurf geprüft werden'});
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
@@ -6717,7 +6717,7 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
       return res.status(409).json({error:'Der Versand dieses Angebots läuft bereits oder muss nach einem unterbrochenen Versand geprüft werden'});
     }
     claimedOfferId=claimed[0].id;
-    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[claimedOfferId]))[0];
+    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject,r.pickup_address,r.pickup_city,r.delivery_address,r.delivery_city,r.goods_description,r.goods_quantity,r.goods_weight,r.requested_date,r.distance_km,r.notes FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[claimedOfferId]))[0];
     if(!offer.customer_email){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});}
     const transport=smtpTransport();if(!transport){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});}
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
