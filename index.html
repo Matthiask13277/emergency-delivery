@@ -835,7 +835,7 @@ async function saveCustomer(id){
   try{await api(id?"/api/customers/manage/"+id:"/api/customers/manage",{method:id?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});closeModal();await refreshState();view("customers")}catch(e){alert(e.message)}
 }
 async function deleteCustomer(id){
-  if(!confirm("Kunden wirklich löschen?"))return;
+  if(!confirm("Kunden aus der aktiven Kundenliste entfernen? Zugehörige Aufträge, Touren, Rechnungen und historische Daten bleiben erhalten."))return;
   try{await api("/api/customers/manage/"+id,{method:"DELETE"});await refreshState();loadCustomersManage()}catch(e){alert(e.message)}
 }
 
