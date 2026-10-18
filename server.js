@@ -6640,6 +6640,79 @@ app.get('/api/transport-offers',auth,roles('Admin','Dispatcher','Accounting'),as
   try{await ensureTransportOffersSchema();res.json(await q(`SELECT o.*,r.customer_name,r.customer_email,r.email_subject FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id ORDER BY o.created_at DESC LIMIT 300`));}
   catch(e){res.status(500).json({error:e.message})}
 });
+async function buildTransportOfferPdf(offer,company={}){
+  const PDFDocument=require('pdfkit'),chunks=[];
+  const doc=new PDFDocument({size:'A4',margin:48,bufferPages:true});
+  doc.on('data',c=>chunks.push(c));
+  const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
+  await v185PdfLogo(doc,company);
+  const left=48,right=547,width=499;
+  // v185PdfLogo draws the masthead; reset the text cursor to the full page width.
+  doc.x=left;doc.y=136;doc.fillColor('#172033');
+  doc.font('Helvetica-Bold').fontSize(21).text('TRANSPORTANGEBOT',{width,align:'left'});
+  doc.moveDown(0.25);
+  doc.font('Helvetica').fontSize(10).fillColor('#667085').text('Angebot Nr. '+(offer.offer_number||'—'),{width});
+  doc.text('Erstellt am '+v189DateOnly(offer.created_at||new Date().toISOString()),{width});
+  doc.moveDown(0.8);
+  const customerTop=doc.y;
+  doc.roundedRect(left,customerTop,width,62,6).fillAndStroke('#f7f8fa','#d8dee8');
+  doc.fillColor('#667085').font('Helvetica-Bold').fontSize(8).text('ANGEBOT FÜR',left+14,customerTop+10,{width:width-28});
+  doc.fillColor('#172033').font('Helvetica-Bold').fontSize(11).text(offer.customer_name||offer.customer_email||'Kunde nicht angegeben',left+14,customerTop+25,{width:width-28});
+  if(offer.customer_email)doc.fillColor('#475467').font('Helvetica').fontSize(9).text(offer.customer_email,left+14,customerTop+42,{width:width-28});
+  doc.y=customerTop+76;doc.x=left;
+  doc.font('Helvetica-Bold').fontSize(12).fillColor('#172033').text('Transportdetails',{width});
+  doc.moveDown(0.4);
+  const routeTop=doc.y,half=(width-12)/2,routeHeight=74;
+  doc.roundedRect(left,routeTop,half,routeHeight,5).fillAndStroke('#fffaf0','#e7c77c');
+  doc.roundedRect(left+half+12,routeTop,half,routeHeight,5).fillAndStroke('#f7f8fa','#d8dee8');
+  doc.fillColor('#9a6700').font('Helvetica-Bold').fontSize(8).text('ABHOLUNG',left+12,routeTop+10,{width:half-24});
+  doc.fillColor('#172033').font('Helvetica').fontSize(9).text([offer.pickup_address,offer.pickup_city].filter(Boolean).join(', ')||'Nicht angegeben',left+12,routeTop+26,{width:half-24,height:routeHeight-32});
+  doc.fillColor('#667085').font('Helvetica-Bold').fontSize(8).text('LIEFERUNG',left+half+24,routeTop+10,{width:half-24});
+  doc.fillColor('#172033').font('Helvetica').fontSize(9).text([offer.delivery_address,offer.delivery_city].filter(Boolean).join(', ')||'Nicht angegeben',left+half+24,routeTop+26,{width:half-24,height:routeHeight-32});
+  doc.y=routeTop+routeHeight+16;doc.x=left;
+  const details=[
+    ['Ware',offer.goods_description||'—'],
+    ['Menge / Anzahl',offer.goods_quantity||'—'],
+    ['Gewicht',offer.goods_weight||'—'],
+    ['Gewünschter Abholtermin',v189DateOnly(offer.requested_date)||'—'],
+    ['Transportstrecke',offer.distance_km!==null&&offer.distance_km!==undefined?Number(offer.distance_km).toLocaleString('de-DE',{maximumFractionDigits:2})+' km':'—']
+  ];
+  const rowH=27,labelW=176;
+  details.forEach(([label,value],idx)=>{
+    const y=doc.y;
+    if(idx%2===0)doc.rect(left,y,width,rowH).fill('#f7f8fa');
+    doc.fillColor('#667085').font('Helvetica').fontSize(9).text(label,left+10,y+8,{width:labelW-12});
+    doc.fillColor('#172033').font('Helvetica-Bold').fontSize(9).text(String(value),left+labelW,y+8,{width:width-labelW-12});
+    doc.y=y+rowH;doc.x=left;
+  });
+  if(offer.notes){
+    doc.moveDown(0.8);doc.fillColor('#172033').font('Helvetica-Bold').fontSize(10).text('Zusätzliche Hinweise',{width});
+    doc.moveDown(0.25);doc.font('Helvetica').fontSize(9).fillColor('#475467').text(String(offer.notes),{width});
+  }
+  doc.moveDown(0.9);
+  const sumH=92,sumY=doc.y;
+  doc.roundedRect(292,sumY,255,sumH,6).fillAndStroke('#fffaf0','#e7c77c');
+  doc.fillColor('#475467').font('Helvetica').fontSize(10).text('Nettobetrag',306,sumY+14,{width:130});
+  doc.fillColor('#172033').font('Helvetica').fontSize(10).text(Number(offer.net_amount||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'}),426,sumY+14,{width:108,align:'right'});
+  doc.fillColor('#475467').font('Helvetica').fontSize(10).text('MwSt. ('+Number(offer.tax_rate||0).toFixed(2)+' %)',306,sumY+36,{width:130});
+  doc.fillColor('#172033').font('Helvetica').fontSize(10).text(Number(offer.tax_amount||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'}),426,sumY+36,{width:108,align:'right'});
+  doc.moveTo(306,sumY+59).lineTo(533,sumY+59).strokeColor('#e7c77c').lineWidth(0.8).stroke();
+  doc.fillColor('#172033').font('Helvetica-Bold').fontSize(12).text('Gesamtbetrag',306,sumY+68,{width:130});
+  doc.font('Helvetica-Bold').fontSize(12).text(Number(offer.gross_amount||0).toLocaleString('de-DE',{style:'currency',currency:'EUR'}),426,sumY+68,{width:108,align:'right'});
+  doc.y=sumY+sumH+14;doc.x=left;
+  if(offer.valid_until){
+    doc.fillColor('#475467').font('Helvetica').fontSize(9).text('Dieses Angebot ist gültig bis '+v189DateOnly(offer.valid_until)+'.',{width});
+    doc.moveDown(0.4);
+  }
+  if(offer.terms){
+    doc.fillColor('#172033').font('Helvetica-Bold').fontSize(9).text('Angebotsbedingungen',{width});
+    doc.moveDown(0.2);doc.font('Helvetica').fontSize(9).fillColor('#475467').text(String(offer.terms),{width});
+  }
+  const footerY=770;
+  doc.moveTo(left,footerY).lineTo(right,footerY).strokeColor('#d8dee8').lineWidth(0.7).stroke();
+  doc.fillColor('#667085').font('Helvetica').fontSize(8).text([company.company_name||'Emergency Delivery',[company.address,company.postal_code,company.city].filter(Boolean).join(', '),company.phone||'',company.email||''].filter(Boolean).join('  •  '),left,footerY+8,{width,align:'center'});
+  doc.end();await finished;return Buffer.concat(chunks);
+}
 app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
   try{
     await ensureTransportOffersSchema();
@@ -6647,29 +6720,7 @@ app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher',
     if(!offer)return res.status(404).json({error:'Angebot nicht gefunden'});
     if(offer.status==='sent'||offer.status==='accepted'||offer.status==='declined')return res.status(409).json({error:'Dieses Angebot wurde bereits abgeschlossen und kann nicht mehr als Entwurf geprüft werden'});
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
-    const PDFDocument=require('pdfkit'),chunks=[];const doc=new PDFDocument({size:'A4',margin:48});
-    doc.on('data',c=>chunks.push(c));const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
-    await v185PdfLogo(doc,company);
-    doc.fontSize(18).font('Helvetica-Bold').text('ANGEBOT');doc.moveDown();
-    doc.fontSize(10).font('Helvetica').text('Angebotsnummer: '+offer.offer_number);
-    doc.text('Kunde: '+(offer.customer_name||offer.customer_email||'Nicht angegeben'));
-    if(company.company_name)doc.text(company.company_name);
-    if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
-    doc.moveDown().text('Transportanfrage: '+(offer.email_subject||'Transport'));
-    const addressRows=[['Abholung',offer.pickup_address,offer.pickup_city],['Lieferung',offer.delivery_address,offer.delivery_city]];
-    for(const [label,address,city] of addressRows){if(address||city)doc.moveDown(0.3).font('Helvetica-Bold').text(label+': ').font('Helvetica').text([address,city].filter(Boolean).join(', '));}
-    if(offer.goods_description)doc.moveDown(0.3).text('Ware: '+offer.goods_description);
-    if(offer.goods_quantity)doc.text('Menge: '+offer.goods_quantity);
-    if(offer.goods_weight)doc.text('Gewicht: '+offer.goods_weight);
-    if(offer.requested_date)doc.text('Gewünschter Abholtermin: '+String(offer.requested_date).slice(0,10));
-    if(offer.distance_km!==null&&offer.distance_km!==undefined)doc.text('Transportstrecke: '+Number(offer.distance_km).toFixed(2)+' km');
-    if(offer.notes)doc.moveDown(0.3).text('Zusätzliche Hinweise: '+offer.notes);
-    doc.moveDown().text('Nettobetrag: '+Number(offer.net_amount).toFixed(2)+' EUR');
-    doc.text('Steuer ('+Number(offer.tax_rate).toFixed(2)+'%): '+Number(offer.tax_amount).toFixed(2)+' EUR');
-    doc.font('Helvetica-Bold').text('Gesamtbetrag: '+Number(offer.gross_amount).toFixed(2)+' EUR');
-    if(offer.valid_until)doc.moveDown().font('Helvetica').text('Angebot gültig bis: '+String(offer.valid_until).slice(0,10));
-    if(offer.terms)doc.moveDown().text('Bedingungen: '+offer.terms);
-    doc.end();await finished;
+    const pdf=await buildTransportOfferPdf(offer,company);
     const pdf=Buffer.concat(chunks);
     res.setHeader('Content-Type','application/pdf');
     res.setHeader('Content-Disposition','inline; filename="'+String(offer.offer_number).replace(/[^a-zA-Z0-9_-]/g,'_')+'.pdf"');
@@ -6721,28 +6772,7 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
     if(!offer.customer_email){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});}
     const transport=smtpTransport();if(!transport){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});}
     const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
-    const PDFDocument=require('pdfkit'),chunks=[];const doc=new PDFDocument({size:'A4',margin:48});
-    doc.on('data',c=>chunks.push(c));const finished=new Promise((resolve,reject)=>{doc.on('end',resolve);doc.on('error',reject)});
-    await v185PdfLogo(doc,company);
-    doc.fontSize(18).font('Helvetica-Bold').text('ANGEBOT');doc.moveDown();
-    doc.fontSize(10).font('Helvetica').text('Angebotsnummer: '+offer.offer_number);
-    doc.text('Kunde: '+(offer.customer_name||offer.customer_email));
-    if(company.address)doc.text(company.address);if(company.postal_code||company.city)doc.text([company.postal_code,company.city].filter(Boolean).join(' '));
-    doc.moveDown().text('Transportanfrage: '+(offer.email_subject||'Transport'));
-    const addressRows=[['Abholung',offer.pickup_address,offer.pickup_city],['Lieferung',offer.delivery_address,offer.delivery_city]];
-    for(const [label,address,city] of addressRows){if(address||city)doc.moveDown(0.3).font('Helvetica-Bold').text(label+': ').font('Helvetica').text([address,city].filter(Boolean).join(', '));}
-    if(offer.goods_description)doc.moveDown(0.3).text('Ware: '+offer.goods_description);
-    if(offer.goods_quantity)doc.text('Menge: '+offer.goods_quantity);
-    if(offer.goods_weight)doc.text('Gewicht: '+offer.goods_weight);
-    if(offer.requested_date)doc.text('Gewünschter Abholtermin: '+String(offer.requested_date).slice(0,10));
-    if(offer.distance_km!==null&&offer.distance_km!==undefined)doc.text('Transportstrecke: '+Number(offer.distance_km).toFixed(2)+' km');
-    if(offer.notes)doc.moveDown(0.3).text('Zusätzliche Hinweise: '+offer.notes);
-    doc.moveDown().text('Nettobetrag: '+Number(offer.net_amount).toFixed(2)+' EUR');
-    doc.text('Steuer ('+Number(offer.tax_rate).toFixed(2)+'%): '+Number(offer.tax_amount).toFixed(2)+' EUR');
-    doc.font('Helvetica-Bold').text('Gesamtbetrag: '+Number(offer.gross_amount).toFixed(2)+' EUR');
-    if(offer.valid_until)doc.moveDown().font('Helvetica').text('Angebot gültig bis: '+String(offer.valid_until).slice(0,10));
-    if(offer.terms)doc.moveDown().text('Bedingungen: '+offer.terms);
-    doc.end();await finished;const pdf=Buffer.concat(chunks);
+    const pdf=await buildTransportOfferPdf(offer,company);const pdf=Buffer.concat(chunks);
     await transport.sendMail({from:smtpCfg.from||smtpCfg.user,to:offer.customer_email,subject:'Transportangebot '+offer.offer_number,text:'Guten Tag, anbei erhalten Sie unser Transportangebot. Bei Rückfragen melden Sie sich gerne.\n\n'+(company.company_name||'Emergency Delivery'),attachments:[{filename:offer.offer_number+'.pdf',content:pdf,contentType:'application/pdf'}]});
     // SMTP accepted the message; keep the claim if finalization fails to avoid duplicate sends.
     mailAccepted=true;
