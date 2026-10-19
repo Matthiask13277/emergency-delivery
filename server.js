@@ -18,6 +18,8 @@ function loadSmtpConfig(){try{return JSON.parse(fs.readFileSync(smtpConfigFile,"
 function saveSmtpConfig(cfg){fs.mkdirSync(smtpConfigDir,{recursive:true});fs.writeFileSync(smtpConfigFile,JSON.stringify(cfg,null,2),"utf8");}
 let smtpCfg=loadSmtpConfig();
 function smtpTransport(){
+  // Outbound email is intentionally disabled; Gmail import remains independent.
+  return null;
   const nodemailer=require("nodemailer");
   if(!smtpCfg.user||!smtpCfg.pass) return null;
   return nodemailer.createTransport({host:smtpCfg.host||"smtp.gmail.com",port:Number(smtpCfg.port||587),secure:!!smtpCfg.secure,auth:{user:smtpCfg.user,pass:smtpCfg.pass},connectionTimeout:15000,greetingTimeout:15000,socketTimeout:20000});
@@ -2279,6 +2281,7 @@ async function queueCustomerEmail40({customerId,invoiceId=null,ddtId=null,to,sub
   return r[0];
 }
 async function processEmail40(){
+  return; // Outbound email disabled; preserve queued records without sending.
   const rows=await q(`select * from email_outbox where status in ('Queued','Retry') and attempts<5 order by queued_at limit 10`);
   for(const m of rows){
     if(!mailer40){
@@ -2329,6 +2332,7 @@ app.get("/api/email/settings",auth,roles("Admin"),async(req,res)=>{
   res.json({host:smtpCfg.host||"smtp.gmail.com",port:Number(smtpCfg.port||587),secure:!!smtpCfg.secure,user:smtpCfg.user||"",from:smtpCfg.from||smtpCfg.user||"",configured:!!(smtpCfg.user&&smtpCfg.pass)});
 });
 app.patch("/api/email/settings",auth,roles("Admin"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Versand ist in dieser App deaktiviert."});
   try{
     const b=req.body||{};
     const host=String(b.host||"smtp.gmail.com").trim(), port=Number(b.port||587), secure=!!b.secure, user=String(b.user||"").trim(), from=String(b.from||user).trim();
@@ -2341,6 +2345,7 @@ app.patch("/api/email/settings",auth,roles("Admin"),async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/email/test-smtp",auth,roles("Admin"),async(req,res)=>{
+  return res.status(410).json({error:"SMTP-Test ist deaktiviert, da die App keine E-Mails versendet."});
   try{
     smtpCfg=loadSmtpConfig();
     if(!smtpCfg.user||!smtpCfg.pass)return res.status(400).json({error:"Gmail-Adresse und App-Passwort fehlen."});
@@ -2357,6 +2362,7 @@ app.post("/api/email/test-smtp",auth,roles("Admin"),async(req,res)=>{
 });
 
 app.post("/api/email/send-direct",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Versand ist in dieser App deaktiviert."});
   try{
     smtpCfg=loadSmtpConfig();
     mailer40=smtpTransport();
@@ -4221,6 +4227,7 @@ async function v88SendMail(row){
   await transporter.sendMail({from:process.env.SMTP_FROM||user,to:row.recipient,subject:row.subject,html:row.body_html,attachments});
 }
 async function v88MailSweep(){
+  return; // Outbound email disabled.
   if(v88MailRunning)return; v88MailRunning=true;
   try{
     await q(`alter table email_outbox add column if not exists attachments_json text`);
@@ -6229,6 +6236,7 @@ async function v133SendEmailRow(row){
   });
 }
 async function v133ProcessEmailOutbox(){
+  return; // Outbound email disabled.
   const r=await q(`select * from email_outbox where status in('Queued','Retry') and (next_attempt_at is null or next_attempt_at<=now())
     order by created_at asc limit 25`);
   for(const row of r.rows){
@@ -6269,6 +6277,7 @@ v133Timer.unref?.();
 
 
 app.post("/api/workflow-v133/email-worker",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+ return res.status(410).json({error:"E-Mail-Versand ist in dieser App deaktiviert."});
  try{await v133EnsureEmailColumns();await v133ProcessEmailOutbox();res.json({ok:true})}
  catch(e){res.status(500).json({error:e.message})}
 });
@@ -6848,6 +6857,7 @@ app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),as
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async(req,res)=>{
+  return res.status(410).json({error:'Angebotsversand ist in dieser App deaktiviert.'});
   let claimedOfferId=null;
   let mailAccepted=false;
   try{
