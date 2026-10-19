@@ -3,7 +3,11 @@ require("dotenv").config();
 const express=require("express"),path=require("path"),bcrypt=require("bcryptjs"),jwt=require("jsonwebtoken");
 const {pool}=require("./local-db.js");
 const {listGmailMessages}=require("./gmail-pagination.js");
-const app=express(),PORT=process.env.PORT||3000,JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
+const app=express(),PORT=process.env.PORT||3000;
+if(!global.__EMERGENCY_DESKTOP_MODE__ && (!process.env.JWT_SECRET || process.env.JWT_SECRET==="CHANGE_ME")){
+  throw new Error("JWT_SECRET must be configured with a strong secret in hosted environments.");
+}
+const JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
   res.header("Access-Control-Allow-Methods","GET,POST,PATCH,PUT,DELETE,OPTIONS");
