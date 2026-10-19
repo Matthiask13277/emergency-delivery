@@ -4,6 +4,11 @@ const express=require("express"),path=require("path"),bcrypt=require("bcryptjs")
 const {pool}=require("./local-db.js");
 const {listGmailMessages}=require("./gmail-pagination.js");
 const app=express(),PORT=process.env.PORT||3000,JWT_SECRET=process.env.JWT_SECRET||"CHANGE_ME";
+// Online deployments use managed PostgreSQL. Never start a hosted instance with a
+// known/default JWT key: anyone who knows it could forge authentication tokens.
+if(process.env.DATABASE_URL && (!process.env.JWT_SECRET || process.env.JWT_SECRET==="CHANGE_ME" || process.env.JWT_SECRET.length<32)){
+  throw new Error("Unsafe JWT_SECRET: set a unique random secret of at least 32 characters for the online deployment.");
+}
 app.use((req,res,next)=>{
   res.header("Access-Control-Allow-Origin","*");
   res.header("Access-Control-Allow-Methods","GET,POST,PATCH,PUT,DELETE,OPTIONS");
