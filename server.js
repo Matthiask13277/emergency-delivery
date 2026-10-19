@@ -637,8 +637,26 @@ app.post("/api/sync",auth,async(req,res)=>{
         if(!s) throw new Error("Stop nicht gefunden");
         if(req.user.role==="Driver" && s.driver_id!==req.user.id)
           throw new Error("Keine Berechtigung für diesen Stop");
+        if(!["Arrived","Delivered","Pending","In Progress"].includes(a.status)) throw new Error("Ungültiger Stopstatus");
         await q("UPDATE trip_stops SET status=$1,arrived_at=CASE WHEN $1='Arrived' THEN NOW() ELSE arrived_at END,delivered_at=CASE WHEN $1='Delivered' THEN NOW() ELSE delivered_at END WHERE id=$2",
           [a.status,a.stopId]);
+
+      } else if(a.type==="signature"){
+        const data=String(a.data||"");
+        if(!data.startsWith("data:image/png;base64,")||data.length>2_000_000)throw new Error("Ungültige oder zu große Unterschrift");
+        const stop=(await q("SELECT s.id,s.trip_id,t.driver_id FROM trip_stops s JOIN trips t ON t.id=s.trip_id WHERE s.id=$1",[a.stopId]))[0];
+        if(!stop)throw new Error("Stop nicht gefunden");
+        if(req.user.role!=="Driver"||stop.driver_id!==req.user.id)throw new Error("Keine Berechtigung für diese Unterschrift");
+        await q("UPDATE trip_stops SET signature_data=$1 WHERE id=$2",[data,a.stopId]);
+        await q("UPDATE trips SET signature_data=$1,signature_at=NOW(),updated_at=NOW() WHERE id=$2",[data,stop.trip_id]);
+
+      } else if(a.type==="photo"){
+        const data=String(a.data||"");
+        if(!/^data:image\/(jpeg|png|webp);base64,/.test(data)||data.length>7_000_000)throw new Error("Ungültiges oder zu großes Lieferfoto");
+        const trip=(await q("SELECT id,driver_id FROM trips WHERE id=$1",[a.tripId]))[0];
+        if(!trip)throw new Error("Tour nicht gefunden");
+        if(req.user.role!=="Driver"||trip.driver_id!==req.user.id)throw new Error("Keine Berechtigung für dieses Lieferfoto");
+        await q("UPDATE trips SET delivery_photo=$1,updated_at=NOW() WHERE id=$2",[data,a.tripId]);
 
       } else {
         throw new Error("Unbekannter Sync-Typ");
