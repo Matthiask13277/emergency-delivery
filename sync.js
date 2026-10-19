@@ -43,9 +43,12 @@ async function edSync() {
         .map(x => x.id)
     );
 
+    // Merge against the current queue, not the snapshot sent above.
+    // Actions added while the request was in flight must not be discarded.
+    const latest = edQueue();
     localStorage.setItem(
       ED_QUEUE_KEY,
-      JSON.stringify(q.filter(x => !done.has(x.id)))
+      JSON.stringify(latest.filter(x => !done.has(x.id)))
     );
   } catch (_) {
     // Netzwerkfehler: Aktionen bleiben lokal gespeichert.
