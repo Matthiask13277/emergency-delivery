@@ -376,7 +376,7 @@ if(p==="account"){
   c.innerHTML=`<div class="page-head"><div><div class="eyebrow">BENUTZERKONTO</div><h2>Mein Konto</h2><p class="muted">Jeder Benutzer hat seinen eigenen Zugang. Das persönliche Passwort kann hier selbst geändert werden.</p></div></div>
   
   ${S.user?.role==="Admin"?`<div class="panel" style="margin-bottom:14px"><h3>Benutzerverwaltung</h3><p class="muted">Benutzer anlegen, Namen, Login, Rolle, Passwort und Berechtigungen ändern.</p><button class="btn primary" onclick="view('employees')">Benutzer verwalten</button></div>`:""}<div class="grid2"><div class="panel"><h3>Benutzerdaten</h3><label>Benutzername<input id="meUsername" value="${esc(S.user.username||"")}"></label><label>Name<input id="meName" value="${esc(S.user.name||"")}"></label><label>Rolle<input disabled value="${esc(roleLabel(S.user.role))}"></label><label>E-Mail<input id="meEmail" type="email" value="${esc(S.user.email||"")}"></label><label>Telefon<input id="mePhone" value="${esc(S.user.phone||"")}"></label><br><button class="btn primary" onclick="saveMyProfile()">Daten speichern</button></div>
-  <div class="panel"><h3>Passwort ändern</h3><p class="muted">Mindestens 8 Zeichen. Das aktuelle Passwort wird zur Sicherheit abgefragt.</p><label>Aktuelles Passwort<input id="oldPw" type="password" autocomplete="current-password"></label><label>Neues Passwort<input id="newPw" type="password" autocomplete="new-password"></label><label>Neues Passwort wiederholen<input id="newPw2" type="password" autocomplete="new-password"></label><br><button class="btn primary" onclick="changeMyPassword()">Passwort ändern</button><div id="pwHint" class="muted" style="margin-top:10px"></div></div></div>`;loadMyAccount();return}
+  <div class="panel"><h3>Passwort ändern</h3><p class="muted">Mindestens 8 Zeichen. Das aktuelle Passwort wird zur Sicherheit abgefragt.</p><label>Aktuelles Passwort<input id="oldPw" type="password" autocomplete="current-password"></label><label>Neues Passwort<input id="newPw" type="password" autocomplete="new-password"></label><label>Neues Passwort wiederholen<input id="newPw2" type="password" autocomplete="new-password"></label><br><button class="btn primary" onclick="changeMyPassword()">Passwort ändern</button><div id="pwHint" class="muted" style="margin-top:10px"></div></div></div><div class="panel" style="margin-top:14px"><h3>Abmelden / Benutzer wechseln</h3><p class="muted">Melde dich ab, um dich mit einem anderen Benutzer anzumelden. Gespeicherte Lieferdaten bleiben erhalten.</p><button class="btn secondary" type="button" onclick="logout()">↪ Abmelden / Benutzer wechseln</button></div>`;loadMyAccount();return}
 
 if(p==="company"){
   const x=S.company||{};
@@ -1191,24 +1191,6 @@ if ("serviceWorker" in navigator) {
     try{await api("/api/transport-requests/"+encodeURIComponent(id)+"/offer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({net_amount:amount,tax_rate:rate})});alert("Angebot erstellt. Bitte im Bereich Angebote ausdrücklich freigeben, bevor es versendet wird.");await loadTransportData()}catch(e){alert("Angebot konnte nicht erstellt werden: "+e.message)}
   }
   window.view=function(p){if(p==="transport"){document.body.classList.remove("driver-mode");originalView("dashboard");const c=document.getElementById("c");if(c){const title=document.querySelector(".brand");if(title)title.textContent="Transportanfragen & Angebote";loadTransportPage()}return}originalView(p);const roleUser=window.currentUser||((typeof S!=="undefined"&&S)?S.user:null);if(p!=="login"&&roleUser&&["admin","dispatcher","verwaltung","administrator"].includes(String(roleUser.role||"").trim().toLowerCase())){const groups=document.querySelectorAll(".menu-group");const target=groups[3]||groups[groups.length-1];if(target&&!target.querySelector('[data-transport-nav="1"]')){const b=document.createElement("button");b.className="menu-btn";b.dataset.transportNav="1";b.innerHTML='<span class="ico">⇄</span>Transportanfragen';b.onclick=()=>window.view("transport");target.appendChild(b)}if(target&&!target.querySelector('[data-offers-nav="1"]')){const b=document.createElement("button");b.className="menu-btn";b.dataset.offersNav="1";b.innerHTML='<span class="ico">€</span>Angebote erstellen';b.onclick=()=>window.view("transport");target.appendChild(b)}if(p==="dashboard"){const c=document.getElementById("c");if(c&&!c.querySelector("#edCreateOfferTile")){const tile=document.createElement("button");tile.id="edCreateOfferTile";tile.type="button";tile.className="panel";tile.style.cssText="display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;border:1px solid #fed7aa;background:linear-gradient(135deg,#fff7ed,#ffffff);padding:20px;margin-top:14px;color:#172033";tile.innerHTML='<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:12px;background:#ffedd5;color:#c2410c;font-size:26px;font-weight:700">€</span><span style="display:block"><strong style="display:block;font-size:17px;margin-bottom:5px">Angebote erstellen</strong><span style="display:block;color:#667085;font-size:13px">Transportanfrage auswählen, Preis und Steuersatz eingeben und ein Angebot als Entwurf anlegen.</span></span><span style="margin-left:auto;font-size:22px;color:#c2410c">›</span>';tile.onclick=()=>window.view("transport");c.appendChild(tile)}}}};
-})();
-</script>
-<style id="mobile-logout-switch-user">
-@media(max-width:820px){
-#mobileLogoutSwitchUser{display:none;position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:99999;border:0;border-radius:999px;background:#b42318;color:#fff;font:700 14px/1.2 Arial,sans-serif;padding:13px 17px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
-body.driver-mode #mobileLogoutSwitchUser{display:block}
-}
-</style>
-<button id="mobileLogoutSwitchUser" type="button" aria-label="Abmelden und Benutzer wechseln">↪ Abmelden / Benutzer wechseln</button>
-<script>
-(function(){
- const b=document.getElementById('mobileLogoutSwitchUser');
- if(!b)return;
- b.addEventListener('click',function(){if(typeof logout==='function')logout();});
- const sync=function(){b.style.display=(window.matchMedia('(max-width: 820px)').matches&&document.body.classList.contains('driver-mode'))?'block':'none';};
- new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:['class']});
- window.addEventListener('resize',sync);
- sync();
 })();
 </script>
 </body></html>
