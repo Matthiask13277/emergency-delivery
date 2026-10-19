@@ -2304,6 +2304,7 @@ async function processEmail40(){
 // E-Mail-Versand deaktiviert: Emergency Delivery enthält keine Mail-Funktion mehr.
 
 app.post("/api/invoices/:id/send",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{
     const x=(await q(`select i.*,c.id customer_id,c.email,c.company from invoices i left join customers c on c.id=i.customer_id where i.id=$1`,[req.params.id]))[0];
     if(!x)return res.status(404).json({error:"Rechnung nicht gefunden"});
@@ -2315,6 +2316,7 @@ app.post("/api/invoices/:id/send",auth,roles("Admin","Dispatcher","Accounting"),
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/trips/:id/send-documents",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{
     const x=(await q(`select t.id,t.trip_number,t.customer_id,c.email,c.company,i.id invoice_id,i.invoice_number,d.id ddt_id,d.document_number
       from trips t left join customers c on c.id=t.customer_id left join invoices i on i.trip_id=t.id left join delivery_documents d on d.trip_id=t.id
@@ -2328,6 +2330,7 @@ app.post("/api/trips/:id/send-documents",auth,roles("Admin","Dispatcher","Accoun
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.get("/api/email/settings",auth,roles("Admin"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   smtpCfg=loadSmtpConfig();
   res.json({host:smtpCfg.host||"smtp.gmail.com",port:Number(smtpCfg.port||587),secure:!!smtpCfg.secure,user:smtpCfg.user||"",from:smtpCfg.from||smtpCfg.user||"",configured:!!(smtpCfg.user&&smtpCfg.pass)});
 });
@@ -2390,10 +2393,12 @@ app.post("/api/email/send-direct",auth,roles("Admin","Dispatcher","Accounting"),
 });
 
 app.get("/api/email/outbox",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{res.json(await q(`select e.*,c.company from email_outbox e left join customers c on c.id=e.customer_id order by e.queued_at desc limit 100`))}
   catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/email/outbox/:id/retry",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{const r=await q("update email_outbox set status='Retry',last_error=null where id=$1 returning *",[req.params.id]);if(!r[0])return res.status(404).json({error:"E-Mail nicht gefunden"});res.json(r[0])}
   catch(e){res.status(500).json({error:e.message})}
 });
@@ -3300,6 +3305,7 @@ app.post("/api/documents/refresh-status",auth,roles("Admin","Accounting"),async(
 
 // V63 document send center
 app.post("/api/documents/send",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{
     const invoiceId=req.body.invoice_id||null, ddtId=req.body.delivery_document_id||null;
     if(!invoiceId&&!ddtId)return res.status(400).json({error:"invoice_id oder delivery_document_id erforderlich"});
@@ -3321,6 +3327,7 @@ app.post("/api/documents/send",auth,roles("Admin","Dispatcher","Accounting"),asy
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.get("/api/documents/send-status",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{
     const r=await q(`select e.*,c.company customer_company from email_outbox e left join customers c on c.id=e.customer_id order by e.queued_at desc limit 200`);
     res.json(r)
@@ -4193,6 +4200,7 @@ app.get("/api/documents/ddt/:id/pdf",auth,async(req,res)=>{
 });
 
 app.post("/api/documents/send-pdf-v87/:tripId",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{
     const trip=(await q(`select t.*,c.company customer_company,c.vat_id customer_vat,c.email customer_email,u.name driver_name,v.name vehicle_name,v.plate from trips t left join customers c on c.id=t.customer_id left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id where t.id=$1`,[req.params.tripId]))[0];
     if(!trip)return res.status(404).json({error:"Tour nicht gefunden"});
@@ -4251,6 +4259,7 @@ setInterval(()=>v88MailSweep().catch(e=>console.error(e)),30000);
 
 
 app.get("/api/documents/email-status-v88",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{res.json(await q(`select id,recipient,subject,status,attempts,last_error,queued_at,sent_at from email_outbox order by queued_at desc limit 100`))}
   catch(e){res.status(500).json({error:e.message})}
 });
@@ -4408,6 +4417,7 @@ app.get("/api/dunning-v93",auth,roles("Admin","Accounting","Dispatcher"),async(r
 
 // V94 dunning email integration
 app.post("/api/invoices/:id/send-dunning-v94",auth,roles("Admin","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
   try{
     await q(`create table if not exists invoice_dunning(id uuid primary key default gen_random_uuid(),invoice_id uuid not null references invoices(id) on delete cascade,level integer not null default 1,dunning_date date not null default current_date,status text not null default 'Open',recipient text,sent_at timestamptz,note text,created_at timestamptz not null default now())`);
     await q(`alter table email_outbox add column if not exists dunning_id uuid`);
@@ -6185,6 +6195,7 @@ app.get("/api/workflow-v132/documents/:tripId",auth,roles("Admin","Dispatcher","
  }catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/workflow-v132/send/:tripId",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
  try{
   const d=await v132BuildDocuments(req.params.tripId);
   if(!d.customer.email) return res.status(400).json({error:"Customer email missing"});
@@ -6285,6 +6296,7 @@ app.post("/api/workflow-v133/email-worker",auth,roles("Admin","Dispatcher","Acco
 
 // V134 document delivery monitor
 app.get("/api/workflow-v134/outbox",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
  try{
   const r=await q(`select e.*,c.company,t.trip_number,
     (select count(*) from customer_communication_outbox o where o.trip_id=e.trip_id and o.channel='email' and o.recipient=e.to_email and o.subject=e.subject) communication_count
@@ -6301,6 +6313,7 @@ app.post("/api/workflow-v134/retry/:id",auth,roles("Admin","Dispatcher","Account
  }catch(e){res.status(500).json({error:e.message})}
 });
 app.post("/api/workflow-v134/resend/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  return res.status(410).json({error:"E-Mail-Funktionen wurden aus der App entfernt."});
  try{
   const r=await q(`select * from email_outbox where id=$1`,[req.params.id]);
   if(!r.rows.length)return res.status(404).json({error:"Outbox entry not found"});
@@ -6899,12 +6912,7 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
 // No credentials are stored in source code; import remains inactive until configured.
 let gmailPollRunning=false;
 async function gmailAccessToken(){
-  const {GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_REFRESH_TOKEN}=process.env;
-  if(!GOOGLE_CLIENT_ID||!GOOGLE_CLIENT_SECRET||!GOOGLE_REFRESH_TOKEN)return null;
-  const form=new URLSearchParams({client_id:GOOGLE_CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'});
-  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
-  if(!response.ok)throw new Error('Gmail OAuth token refresh failed: '+response.status);
-  return (await response.json()).access_token;
+  return null; // Gmail import removed; transport requests are entered manually.
 }
 function gmailDecode(data){
   if(!data)return '';
@@ -6918,37 +6926,9 @@ function gmailText(payload){
   for(const part of payload.parts||[]){const found=gmailText(part);if(found)return found}
   return '';
 }
-async function importGmailTransportRequests(){
-  if(gmailPollRunning||!process.env.GOOGLE_CLIENT_ID||!process.env.GOOGLE_CLIENT_SECRET||!process.env.GOOGLE_REFRESH_TOKEN)return;
-  gmailPollRunning=true;
-  try{
-    await ensureTransportOffersSchema();
-    const token=await gmailAccessToken();
-    const query=process.env.GMAIL_IMPORT_QUERY||'newer_than:2d (transport OR transport request OR delivery OR lieferung OR transportanfrage)';
-    const messages=await listGmailMessages({query,token});
-    for(const item of messages){
-      const exists=await q('SELECT id FROM transport_requests WHERE email_message_id=$1',[item.id]);
-      if(exists[0])continue;
-      const detailResponse=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/'+encodeURIComponent(item.id)+'?format=full',{headers:{authorization:'Bearer '+token}});
-      if(!detailResponse.ok)continue;
-      const msg=await detailResponse.json(),headers=msg.payload?.headers||[];
-      const from=gmailHeader(headers,'From'),subject=gmailHeader(headers,'Subject'),received=msg.internalDate?new Date(Number(msg.internalDate)).toISOString():null;
-      const body=gmailText(msg.payload).slice(0,20000);
-      const email=(from.match(/<([^>]+)>/)||[])[1]||from;
-      const customerEmail=email.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]||null;
-      const customerName=from.replace(/<[^>]+>/,'').replace(/"/g,'').trim()||null;
-      const customer=customerEmail?(await q('SELECT id,company FROM customers WHERE lower(email)=lower($1) ORDER BY id LIMIT 1',[customerEmail]))[0]:null;
-      await q(`INSERT INTO transport_requests(email_message_id,email_from,email_subject,email_received_at,customer_id,customer_name,customer_email,notes)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(email_message_id) DO NOTHING`,
-        [item.id,from,subject,received,customer?.id||null,customer?.company||customerName,customerEmail,body||null]);
-    }
-  }catch(e){console.error('Gmail transport import failed:',e.message)}
-  finally{gmailPollRunning=false}
-}
-const gmailImportTimer=setInterval(()=>importGmailTransportRequests(),120000);
-gmailImportTimer.unref?.();
-setTimeout(()=>importGmailTransportRequests(),15000).unref?.();
+// Gmail import removed: transport requests are entered manually in the app.
 app.get('/api/transport-requests/gmail-status',auth,roles('Admin','Dispatcher'),(req,res)=>{
+  return res.status(410).json({error:"Gmail-Import wurde aus der App entfernt."});
   const configured=!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REFRESH_TOKEN);
   res.json({configured,mode:configured?'background-polling':'disabled',interval_seconds:120,reason:configured?null:'Gmail OAuth environment variables are not configured'});
 });
