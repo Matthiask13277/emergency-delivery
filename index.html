@@ -796,7 +796,7 @@ async function saveDdtEdit(id){
   if(!body.address)return alert("Lieferadresse ist erforderlich.");
   try{await api("/api/documents/ddt/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});closeModal();await refreshState();view("documents")}catch(e){alert(e.message)}
 }
-async function logout(){T="";localStorage.removeItem("edv10");location.reload()}if(T)load();else loginView();
+async function logout(){if(!confirm("Möchtest du dich abmelden und zu einem anderen Benutzer wechseln? Deine gespeicherten Lieferdaten bleiben erhalten."))return;T="";OT="";localStorage.removeItem("edv10");localStorage.removeItem("edv10_offline");location.reload()}if(T)load();else loginView();
 
 window.employeeCache=[];window.employeeVehicles=[];
 async function loadEmployees(){const box=document.getElementById("employeeList");if(!box)return;box.innerHTML="<p class='muted'>Mitarbeiter werden geladen…</p>";try{const r=await api("/api/employees");if(!Array.isArray(r))throw new Error(r?.error||"Mitarbeiter konnten nicht geladen werden.");window.employeeCache=r;box.innerHTML=r.length?r.map(e=>`<div class="listRow" style="padding:16px 4px"><div style="flex:1"><b>${esc(e.name)}</b><div class="muted">${esc(roleLabel(e.role))} · ${e.active===false?"Inaktiv":"Aktiv"}${e.vehicle_name?` · ${esc(e.vehicle_name)} (${esc(e.vehicle_plate||"")})`:""}</div><div class="muted">${esc(e.phone||"Keine Telefonnummer")} · ${esc(e.email||"Keine E-Mail")}</div></div><div>${window.currentUser?.role==="Admin"?`<button onclick="loadEmployeeVehicles().then(()=>openEmployee('${e.id}'))">Bearbeiten</button> <button class="danger" onclick="deleteEmployee('${e.id}')">Löschen</button>`:""}</div></div>`).join(""):"<p>Noch keine Mitarbeiter vorhanden.</p>"}catch(e){box.innerHTML='<p class="error">'+esc(e.message)+'</p>'}}
@@ -1191,6 +1191,24 @@ if ("serviceWorker" in navigator) {
     try{await api("/api/transport-requests/"+encodeURIComponent(id)+"/offer",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({net_amount:amount,tax_rate:rate})});alert("Angebot erstellt. Bitte im Bereich Angebote ausdrücklich freigeben, bevor es versendet wird.");await loadTransportData()}catch(e){alert("Angebot konnte nicht erstellt werden: "+e.message)}
   }
   window.view=function(p){if(p==="transport"){document.body.classList.remove("driver-mode");originalView("dashboard");const c=document.getElementById("c");if(c){const title=document.querySelector(".brand");if(title)title.textContent="Transportanfragen & Angebote";loadTransportPage()}return}originalView(p);const roleUser=window.currentUser||((typeof S!=="undefined"&&S)?S.user:null);if(p!=="login"&&roleUser&&["admin","dispatcher","verwaltung","administrator"].includes(String(roleUser.role||"").trim().toLowerCase())){const groups=document.querySelectorAll(".menu-group");const target=groups[3]||groups[groups.length-1];if(target&&!target.querySelector('[data-transport-nav="1"]')){const b=document.createElement("button");b.className="menu-btn";b.dataset.transportNav="1";b.innerHTML='<span class="ico">⇄</span>Transportanfragen';b.onclick=()=>window.view("transport");target.appendChild(b)}if(target&&!target.querySelector('[data-offers-nav="1"]')){const b=document.createElement("button");b.className="menu-btn";b.dataset.offersNav="1";b.innerHTML='<span class="ico">€</span>Angebote erstellen';b.onclick=()=>window.view("transport");target.appendChild(b)}if(p==="dashboard"){const c=document.getElementById("c");if(c&&!c.querySelector("#edCreateOfferTile")){const tile=document.createElement("button");tile.id="edCreateOfferTile";tile.type="button";tile.className="panel";tile.style.cssText="display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;border:1px solid #fed7aa;background:linear-gradient(135deg,#fff7ed,#ffffff);padding:20px;margin-top:14px;color:#172033";tile.innerHTML='<span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:12px;background:#ffedd5;color:#c2410c;font-size:26px;font-weight:700">€</span><span style="display:block"><strong style="display:block;font-size:17px;margin-bottom:5px">Angebote erstellen</strong><span style="display:block;color:#667085;font-size:13px">Transportanfrage auswählen, Preis und Steuersatz eingeben und ein Angebot als Entwurf anlegen.</span></span><span style="margin-left:auto;font-size:22px;color:#c2410c">›</span>';tile.onclick=()=>window.view("transport");c.appendChild(tile)}}}};
+})();
+</script>
+<style id="mobile-logout-switch-user">
+@media(max-width:820px){
+#mobileLogoutSwitchUser{display:none;position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));z-index:99999;border:0;border-radius:999px;background:#b42318;color:#fff;font:700 14px/1.2 Arial,sans-serif;padding:13px 17px;box-shadow:0 4px 14px rgba(0,0,0,.25);cursor:pointer}
+body.driver-mode #mobileLogoutSwitchUser{display:block}
+}
+</style>
+<button id="mobileLogoutSwitchUser" type="button" aria-label="Abmelden und Benutzer wechseln">↪ Abmelden / Benutzer wechseln</button>
+<script>
+(function(){
+ const b=document.getElementById('mobileLogoutSwitchUser');
+ if(!b)return;
+ b.addEventListener('click',function(){if(typeof logout==='function')logout();});
+ const sync=function(){b.style.display=(window.matchMedia('(max-width: 820px)').matches&&document.body.classList.contains('driver-mode'))?'block':'none';};
+ new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:['class']});
+ window.addEventListener('resize',sync);
+ sync();
 })();
 </script>
 </body></html>
