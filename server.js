@@ -3363,12 +3363,23 @@ app.delete("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounti
 });
 app.get("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
+    await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
+    const archived=String(req.query.archived||"").toLowerCase()==="true"||req.query.archived==="1";
     const rows=await q(`select c.*,coalesce(sum(i.gross) filter(where i.status in('Open','Overdue')),0) outstanding,
       count(distinct o.id)::int order_count
       from customers c left join invoices i on i.customer_id=c.id left join orders o on o.customer_id=c.id
-      where c.archived_at is null group by c.id order by c.company`);
+      where ${archived?"c.archived_at is not null":"c.archived_at is null"} group by c.id order by c.company`);
     res.json(rows)
   }catch(e){res.status(500).json({error:e.message})}
+});
+app.post("/api/customers/manage/:id/restore",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+  try{
+    await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
+    const r=await q("update customers set archived_at=null where id=$1 and archived_at is not null returning id,company",[req.params.id]);
+    if(!r.length)return res.status(404).json({error:"Archivierter Kunde nicht gefunden"});
+    await audit(req,"CUSTOMER_RESTORED",r[0].company);
+    res.json({ok:true,restored:true,message:"Kunde wurde wiederhergestellt."});
+  }catch(e){res.status(500).json({error:"Kunde konnte nicht wiederhergestellt werden."})}
 });
 app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
