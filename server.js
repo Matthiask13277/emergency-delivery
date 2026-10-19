@@ -6912,12 +6912,7 @@ app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async
 // No credentials are stored in source code; import remains inactive until configured.
 let gmailPollRunning=false;
 async function gmailAccessToken(){
-  const {GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,GOOGLE_REFRESH_TOKEN}=process.env;
-  if(!GOOGLE_CLIENT_ID||!GOOGLE_CLIENT_SECRET||!GOOGLE_REFRESH_TOKEN)return null;
-  const form=new URLSearchParams({client_id:GOOGLE_CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:GOOGLE_REFRESH_TOKEN,grant_type:'refresh_token'});
-  const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
-  if(!response.ok)throw new Error('Gmail OAuth token refresh failed: '+response.status);
-  return (await response.json()).access_token;
+  return null; // Gmail import removed; transport requests are entered manually.
 }
 function gmailDecode(data){
   if(!data)return '';
