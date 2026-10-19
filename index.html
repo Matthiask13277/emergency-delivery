@@ -458,7 +458,7 @@ if(p==="driver"){
 }
 if(p==="customers"){
   c.innerHTML=`<div class="page-head"><div><div class="eyebrow">STAMMDATEN</div><h2>Kunden & Kundenakte</h2><p class="muted">Stammdaten, Ansprechpartner, Lieferhinweise, Aufträge, Lieferscheine und Rechnungen an einer Stelle.</p></div><button class="btn primary" onclick="openCustomer()">+ Kunde hinzufügen</button></div>
-  <div class="panel"><div id="customerList">Lade Kunden…</div></div>
+  <div class="panel"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button id="customerActiveTab" class="btn primary" onclick="loadCustomersManage('active')">Aktive Kunden</button><button id="customerArchivedTab" class="btn secondary" onclick="loadCustomersManage('archived')">Archivierte Kunden</button></div><div id="customerList">Lade Kunden…</div></div>
   <div id="customerFileBox" class="panel"><p class="muted">Klicke bei einem Kunden auf „Akte“, um alle Details zu sehen.</p></div>`;
   loadCustomersManage(); return;
 }
@@ -814,17 +814,26 @@ function modal(html){
   m.style.display="flex";
 }
 function closeModal(){const m=document.getElementById("ed-modal");if(m)m.style.display="none"}
-async function loadCustomersManage(){
+async function loadCustomersManage(mode="active"){
   const box=document.getElementById("customerList");if(!box)return;
+  window.customerListMode=mode;
+  const a=document.getElementById("customerActiveTab"),b=document.getElementById("customerArchivedTab");
+  if(a)a.className="btn "+(mode==="active"?"primary":"secondary");
+  if(b)b.className="btn "+(mode==="archived"?"primary":"secondary");
   try{
-    const r=await api("/api/customers/manage");
+    const r=await api("/api/customers/manage"+(mode==="archived"?"?archived=true":""));
     if(!Array.isArray(r))throw new Error(r?.error||"Kunden konnten nicht geladen werden");
     window.customerCache=r;
     box.innerHTML=r.length?r.map(x=>`<div class="listRow customer-row">
       <div class="customer-main"><b>${esc(x.company)}</b><div class="muted">${esc(x.customer_number||"Ohne Kundennummer")} · ${esc(x.contact_name||"Kein Ansprechpartner")} · ${esc(x.city||"Kein Ort")}</div><div class="muted">${esc(x.email||"Keine E-Mail")} · ${esc(x.phone||x.mobile||"Keine Telefonnummer")}</div></div>
-      <div class="customer-actions"><button class="btn primary" onclick="openCustomerFile('${x.id}')">Akte</button><button class="btn secondary" onclick="openCustomer('${x.id}')">Bearbeiten</button><button class="btn danger" onclick="deleteCustomer('${x.id}')">Löschen</button></div>
-    </div>`).join(""):"<p class='muted'>Noch keine Kunden vorhanden.</p>";
+      <div class="customer-actions"><button class="btn primary" onclick="openCustomerFile('${x.id}')">Akte</button>${mode==="archived"?`<button class="btn secondary" onclick="restoreCustomer('${x.id}')">Wiederherstellen</button>`:`<button class="btn secondary" onclick="openCustomer('${x.id}')">Bearbeiten</button><button class="btn danger" onclick="deleteCustomer('${x.id}')">Archivieren</button>`}</div>
+    </div>`).join(""):`<p class='muted'>${mode==="archived"?"Keine archivierten Kunden vorhanden.":"Noch keine aktiven Kunden vorhanden."}</p>`;
   }catch(e){box.innerHTML=`<div class="error">${esc(e.message)}</div>`}
+}
+async function restoreCustomer(id){
+  if(!confirm("Diesen Kunden wieder in die aktive Kundenliste aufnehmen?"))return;
+  try{await api("/api/customers/manage/"+id+"/restore",{method:"POST"});await refreshState();await loadCustomersManage("archived");}
+  catch(e){alert(e.message)}
 }
 function openCustomer(id){
   const x=(window.customerCache||[]).find(v=>v.id===id)||{};
@@ -860,7 +869,7 @@ async function saveCustomer(id){
 }
 async function deleteCustomer(id){
   if(!confirm("Kunden aus der aktiven Kundenliste entfernen? Zugehörige Aufträge, Touren, Rechnungen und historische Daten bleiben erhalten."))return;
-  try{await api("/api/customers/manage/"+id,{method:"DELETE"});window.customerCache=(window.customerCache||[]).filter(x=>String(x.id)!==String(id));await refreshState();await loadCustomersManage()}catch(e){alert(e.message)}
+  try{await api("/api/customers/manage/"+id,{method:"DELETE"});window.customerCache=(window.customerCache||[]).filter(x=>String(x.id)!==String(id));await refreshState();await loadCustomersManage("active")}catch(e){alert(e.message)}
 }
 
 function openInvoice(){
