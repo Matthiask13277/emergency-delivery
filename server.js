@@ -6775,6 +6775,17 @@ app.get('/api/transport-offers/:id/pdf-preview',auth,roles('Admin','Dispatcher',
     res.send(pdf);
   }catch(e){res.status(500).json({error:'PDF-Vorschau konnte nicht erstellt werden'})}
 });
+app.delete('/api/transport-offers/:id',auth,roles('Admin'),async(req,res)=>{
+  try{
+    await ensureTransportOffersSchema();
+    const current=(await q('SELECT id,offer_number,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
+    if(!current)return res.status(404).json({error:'Angebot nicht gefunden'});
+    if(current.status!=='draft'||current.send_claimed_at)return res.status(409).json({error:'Nur nicht freigegebene Entwürfe können gelöscht werden. Freigegebene oder versendete Angebote bleiben aus Nachweisgründen erhalten.'});
+    await q("DELETE FROM transport_offers WHERE id=$1 AND status='draft' AND send_claimed_at IS NULL",[req.params.id]);
+    await audit(req,'TRANSPORT_OFFER_DELETED',current.offer_number||current.id);
+    res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message})}
+});
 app.patch('/api/transport-offers/:id',auth,roles('Admin','Dispatcher'),async(req,res)=>{
   try{
     await ensureTransportOffersSchema();
