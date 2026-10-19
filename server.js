@@ -6869,64 +6869,9 @@ app.post('/api/transport-offers/:id/approve',auth,roles('Admin','Dispatcher'),as
     await audit(req,'TRANSPORT_OFFER_APPROVED',rows[0].offer_number);res.json(rows[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),async(req,res)=>{
-  return res.status(410).json({error:'Angebotsversand ist in dieser App deaktiviert.'});
-  let claimedOfferId=null;
-  let mailAccepted=false;
-  try{
-    // Claim the approved offer atomically before generating a PDF or sending mail.
-    const claimed=await q(`UPDATE transport_offers SET send_claimed_at=now(),updated_at=now()
-      WHERE id=$1 AND status='approved' AND send_claimed_at IS NULL RETURNING id`,[req.params.id]);
-    if(!claimed[0]){
-      const current=(await q('SELECT id,status,send_claimed_at FROM transport_offers WHERE id=$1',[req.params.id]))[0];
-      if(!current)return res.status(404).json({error:'Angebot nicht gefunden'});
-      if(current.status!=='approved')return res.status(409).json({error:'Vor dem Versand muss das Angebot ausdrücklich freigegeben werden'});
-      return res.status(409).json({error:'Der Versand dieses Angebots läuft bereits oder muss nach einem unterbrochenen Versand geprüft werden'});
-    }
-    claimedOfferId=claimed[0].id;
-    const offer=(await q(`SELECT o.*,r.customer_email,r.customer_name,r.email_subject,r.pickup_address,r.pickup_city,r.delivery_address,r.delivery_city,r.goods_description,r.goods_quantity,r.goods_weight,r.requested_date,r.distance_km,r.notes FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id WHERE o.id=$1`,[claimedOfferId]))[0];
-    if(!offer.customer_email){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(400).json({error:'Keine Kunden-E-Mail-Adresse hinterlegt'});}
-    const transport=smtpTransport();if(!transport){await q('UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status=\'approved\'',[claimedOfferId]);claimedOfferId=null;return res.status(503).json({error:'E-Mail-Versand ist nicht konfiguriert'});}
-    const company=(await q('SELECT * FROM company_settings WHERE id=1'))[0]||{};
-    const pdf=await buildTransportOfferPdf(offer,company);
-    await transport.sendMail({from:smtpCfg.from||smtpCfg.user,to:offer.customer_email,subject:'Transportangebot '+offer.offer_number,text:'Guten Tag, anbei erhalten Sie unser Transportangebot. Bei Rückfragen melden Sie sich gerne.\n\n'+(company.company_name||'Emergency Delivery'),attachments:[{filename:offer.offer_number+'.pdf',content:pdf,contentType:'application/pdf'}]});
-    // SMTP accepted the message; keep the claim if finalization fails to avoid duplicate sends.
-    mailAccepted=true;
-    await q(`UPDATE transport_offers SET status='sent',sent_at=now(),send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[offer.id]);
-    await audit(req,'TRANSPORT_OFFER_SENT',offer.offer_number);res.json({ok:true,offer_number:offer.offer_number});
-  }catch(e){
-    // Release the claim on known failures. A process crash after SMTP accepts mail leaves
-    // the claim in place for manual reconciliation rather than risking an automatic duplicate.
-    if(claimedOfferId&&!mailAccepted){
-      try{await q(`UPDATE transport_offers SET send_claimed_at=NULL,updated_at=now() WHERE id=$1 AND status='approved'`,[claimedOfferId]);}catch(_releaseError){}
-    }else if(mailAccepted){
-      console.error('SMTP accepted transport offer email, but finalization failed; offer remains claimed for manual reconciliation:',claimedOfferId);
-    }
-    res.status(500).json({error:'Angebot konnte nicht versendet werden'});
-  }
+app.post('/api/transport-offers/:id/send',auth,roles('Admin','Dispatcher'),(req,res)=>{
+  return res.status(410).json({error:'Angebote werden manuell außerhalb der App versendet.'});
 });
-
-
-// Gmail background import. Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
-// GOOGLE_REFRESH_TOKEN and GMAIL_IMPORT_QUERY as deployment environment variables.
-// No credentials are stored in source code; import remains inactive until configured.
-let gmailPollRunning=false;
-async function gmailAccessToken(){
-  return null; // Gmail import removed; transport requests are entered manually.
-}
-function gmailDecode(data){
-  if(!data)return '';
-  const normalized=data.replace(/-/g,'+').replace(/_/g,'/');
-  return Buffer.from(normalized,'base64').toString('utf8');
-}
-function gmailHeader(headers,name){return (headers||[]).find(h=>String(h.name).toLowerCase()===name.toLowerCase())?.value||''}
-function gmailText(payload){
-  if(!payload)return '';
-  if(payload.mimeType==='text/plain'&&payload.body?.data)return gmailDecode(payload.body.data);
-  for(const part of payload.parts||[]){const found=gmailText(part);if(found)return found}
-  return '';
-}
-// Gmail import removed: transport requests are entered manually in the app.
 app.get('/api/transport-requests/gmail-status',auth,roles('Admin','Dispatcher'),(req,res)=>{
   return res.status(410).json({error:"Gmail-Import wurde aus der App entfernt."});
   const configured=!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REFRESH_TOKEN);
