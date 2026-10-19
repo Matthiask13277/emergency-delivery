@@ -97,6 +97,21 @@ app.get("/assets/emergency-delivery-logo.png",(req,res)=>res.sendFile(path.join(
 // Explicitly serve PWA files; the hosting runtime does not expose root files automatically.
 app.get("/manifest.json",(req,res)=>{res.setHeader("Content-Type","application/manifest+json; charset=utf-8");res.setHeader("Cache-Control","no-cache");res.sendFile(path.join(__dirname,"manifest.json"));});
 app.get("/service-worker.js",(req,res)=>{res.setHeader("Content-Type","application/javascript; charset=utf-8");res.setHeader("Service-Worker-Allowed","/");res.setHeader("Cache-Control","no-cache");res.sendFile(path.join(__dirname,"service-worker.js"));});
+// Employee-only release: disable all customer-facing portal and public tracking entry points.
+app.use((req,res,next)=>{
+  const p=req.path;
+  const disabled =
+    p==="/customer-portal" ||
+    p==="/portal.html" ||
+    p.startsWith("/track/") ||
+    p.startsWith("/api/portal/") ||
+    p.startsWith("/api/customer-portal-") ||
+    p.startsWith("/api/tracking-v128/") ||
+    p==="/api/customer-portal-v127/token" ||
+    /^\/api\/customers\/[^/]+\/portal-token$/.test(p);
+  if(disabled) return res.status(410).json({error:"Kundenportal und öffentliche Sendungsverfolgung sind deaktiviert."});
+  next();
+});
 app.use(desktopCloudProxy);
 
 async function ensureTripsPriorityColumn(){
