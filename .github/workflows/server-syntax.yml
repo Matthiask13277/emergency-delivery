@@ -7,6 +7,8 @@ on:
       - 'server.js'
       - 'gmail-pagination.js'
       - 'tests/gmail-pagination.test.js'
+      - 'tests/offline-sync.test.js'
+      - 'sync.js'
       - 'package.json'
       - 'index.html'
       - 'local-db.js'
@@ -40,8 +42,9 @@ jobs:
           node --check server.js
           node --check local-db.js
           node --check gmail-pagination.js
-      - name: Test Gmail pagination behavior
-        run: npm run test:gmail-pagination
+          node --check sync.js
+      - name: Run Node test suite
+        run: npm test
       - name: Check inline browser JavaScript syntax
         run: |
           node <<'NODE'
