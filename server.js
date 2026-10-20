@@ -4110,7 +4110,8 @@ async function v87BuildDdtPdf(t,stops,ddt){
   doc.text(`Status: ${ddt.status||"—"}`,310,infoTop+46);
   doc.font("Helvetica-Bold").text("Kunde",60,infoTop+66);
   doc.font("Helvetica").text(t.customer_company||"—",110,infoTop+66,{width:420});
-  const deliveryAddress=stops[0]?.address||String(t.route||"").split(" → ")[1]||"—";
+  const stopList = Array.isArray(stops) ? stops : [];
+  const deliveryAddress=stopList[0]?.address||String(t.route||"").split(" → ")[1]||"—";
   doc.font("Helvetica-Bold").text("Lieferadresse",60,infoTop+82);
   doc.font("Helvetica").text(deliveryAddress,130,infoTop+82,{width:405,ellipsis:true});
   doc.y=infoTop+108;
@@ -4125,12 +4126,18 @@ async function v87BuildDdtPdf(t,stops,ddt){
   doc.text("KG",414,tableTop+10,{width:45,align:"right"});
   doc.text("Stück",478,tableTop+10,{width:55,align:"right"});
 
-  const Reihen = stops.Länge ? stops.map(x => ({customer_name: x.customer_name || t.customer_company || "-", Adresse: x.Adresse || "", delivered_kg: x.delivered_weight_kg ?? x.weight_kg ?? 0, delivered_pieces: x.delivered_pieces ?? x.Stücke ?? 0, Status: x.Status || t.Status || "-"})) : [];
+  const rows = stopList.map(x => ({
+    customer_name: x.customer_name || t.customer_company || "-",
+    address: x.address || x.Adresse || "",
+    delivered_kg: x.delivered_weight_kg ?? x.delivered_kg ?? x.planned_kg ?? x.order_weight ?? x.weight_kg ?? (stopList.length === 1 ? t.weight_kg : 0),
+    delivered_pieces: x.delivered_pieces ?? x.planned_pieces ?? x.order_pieces ?? x.pieces ?? x.Stücke ?? (stopList.length === 1 ? t.pieces : 0),
+    Status: x.status || x.Status || t.status || t.Status || "-"
+  }));
   // One-page DDT layout: shrink rows/font instead of creating a second page.
   const footerY=doc.page.height-52;
   const transportY=footerY-70;
   const available=Math.max(90,transportY-(tableTop+30)-34);
-  const rowH = Math.max(12, Math.min(42, Math.floor(available / Math.max(1, Reihen.length))));
+  const rowH = Math.max(12, Math.min(42, Math.floor(available / Math.max(1, rows.length))));
   const rowFont=rowH<=16?5.5:rowH<=22?6.5:8;
   let y=tableTop+30;
   doc.font("Helvetica").fontSize(rowFont);
@@ -4159,7 +4166,7 @@ async function v87BuildDdtPdf(t,stops,ddt){
   const sigX=310, sigY=transportTop, sigW=237, sigH=58;
   doc.font("Helvetica-Bold").fontSize(9).fillColor("#172033").text("Empfangsbestätigung / Kundenunterschrift",sigX,sigY,{width:sigW});
   doc.rect(sigX,sigY+14,sigW,sigH-14).strokeColor("#d0d5dd").stroke();
-  const signedStop=(stops||[]).find(x=>x.signature_data)||null;
+  const signedStop=stopList.find(x=>x.signature_data)||null;
   const signatureData=signedStop?.signature_data||t.signature_data||null;
   const signatureAt=signedStop?.signature_at||t.signature_at||signedStop?.delivered_at||null;
   if(signatureData){
