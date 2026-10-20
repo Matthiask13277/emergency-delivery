@@ -26,8 +26,8 @@ test('all-staff push sender targets every active employee with a registered subs
 });
 
 test('new trip inserts through the shared query helper trigger a push', () => {
-  const helper = section(server, 'const q=async(s,p=[])=>{', '};\napp.get("/"');
-  assert.match(helper, /insert\\s\+into\\s\+trips/);
+  const helper = section(server, 'const q=async(s,p=[])=>{', 'async function ensureDelayCommunicationSchema()');
+  assert.match(helper, /insert\\s+into\\s+trips/);
   assert.match(helper, /v81SendPushAllUsers/);
   assert.match(server, /Push neue Fahrt/);
 });
