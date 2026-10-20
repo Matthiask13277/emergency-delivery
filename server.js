@@ -254,6 +254,14 @@ async function ensureEconomicsSchema(){
   await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
 }
 
+let economicsSchemaReady=null;
+function getEconomicsSchemaReady(){
+  if(!economicsSchemaReady){
+    economicsSchemaReady=ensureEconomicsSchema()
+      .catch(err=>{economicsSchemaReady=null;throw err;});
+  }
+  return economicsSchemaReady;
+}
 async function ensureCompanySettings(){
   await q(`CREATE TABLE IF NOT EXISTS company_settings(
     id integer PRIMARY KEY DEFAULT 1,
@@ -2736,6 +2744,7 @@ app.post("/api/vehicles/:id/fuel",auth,roles("Admin","Dispatcher","Accounting"),
 });
 app.get("/api/reports/economics",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
+    await getEconomicsSchemaReady();
     const from=req.query.from||new Date(new Date().setDate(new Date().getDate()-30)).toISOString().slice(0,10);
     const to=req.query.to||new Date().toISOString().slice(0,10);
     // Read planning_date through the row's JSON representation so older hosted schemas
