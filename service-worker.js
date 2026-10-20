@@ -36,6 +36,37 @@ self.addEventListener("activate", event => {
   );
 });
 
+self.addEventListener("push", event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; }
+  catch (_) { payload = { body: event.data ? event.data.text() : "" }; }
+  const title = payload.title || "Emergency Delivery";
+  const options = {
+    body: payload.body || "Es gibt eine neue Information.",
+    icon: "/emergency-delivery-logo.png",
+    badge: "/emergency-delivery-logo.png",
+    data: payload.data || {},
+    tag: payload.tag || "emergency-delivery-notification",
+    renotify: false
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = new URL("/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of clientsList) {
+      if (client.url.startsWith(self.location.origin) && "focus" in client) {
+        await client.focus();
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
+});
+
 self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET") return;
