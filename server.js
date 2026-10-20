@@ -2683,11 +2683,15 @@ app.get("/api/reports/economics",auth,roles("Admin","Dispatcher","Accounting"),a
   try{
     const from=req.query.from||new Date(new Date().setDate(new Date().getDate()-30)).toISOString().slice(0,10);
     const to=req.query.to||new Date().toISOString().slice(0,10);
-    const trips=await q(`select t.id,t.trip_number,t.price_net,t.route_distance_km,t.weight_kg,t.status,t.planning_date,
+    // Read planning_date through the row's JSON representation so older hosted schemas
+    // without that optional column still load the finance dashboard.
+    const tripDate = `coalesce((to_jsonb(t)->>'planning_date')::date,t.created_at::date)`;
+    const trips=await q(`select t.id,t.trip_number,t.price_net,t.route_distance_km,t.weight_kg,t.status,
+      ${tripDate} as planning_date,
       c.company customer_company,v.name vehicle_name,
       coalesce((select sum(amount_net) from trip_costs tc where tc.trip_id=t.id and tc.cost_date between $1 and $2),0) trip_cost
       from trips t left join customers c on c.id=t.customer_id left join vehicles v on v.id=t.vehicle_id
-      where coalesce(t.planning_date,t.created_at::date) between $1 and $2 order by coalesce(t.planning_date,t.created_at::date) desc`,[from,to]);
+      where ${tripDate} between $1 and $2 order by ${tripDate} desc`,[from,to]);
     const fuel=await q(`select coalesce(sum(liters),0) liters,coalesce(sum(liters*price_net),0) amount from fuel_entries where entry_date between $1 and $2`,[from,to]);
     const vehicle=await q(`select coalesce(sum(amount_net),0) amount from vehicle_costs where cost_date between $1 and $2`,[from,to]);
     const revenue=trips.reduce((a,x)=>a+Number(x.price_net||0),0), tripCosts=trips.reduce((a,x)=>a+Number(x.trip_cost||0),0);
