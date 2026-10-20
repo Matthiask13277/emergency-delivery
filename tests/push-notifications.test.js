@@ -60,3 +60,9 @@ test('push setup prompt remains visible when VAPID public key is not configured'
   assert.doesNotMatch(setup, /if\(!cfg\.publicKey\)return/);
   assert.match(html, /Push ist serverseitig noch nicht aktiviert \(VAPID-Schlüssel fehlen\)/);
 });
+
+test('push setup prompt overrides global styles that hide sections', () => {
+  assert.match(html, /panel\.style\.setProperty\("display","block","important"\)/);
+  assert.match(html, /panel\.style\.setProperty\("visibility","visible","important"\)/);
+  assert.match(html, /panel\.style\.setProperty\("opacity","1","important"\)/);
+});
