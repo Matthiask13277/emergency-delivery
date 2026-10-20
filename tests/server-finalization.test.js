@@ -52,3 +52,14 @@ test('sweep finalization reuses the canonical DDT completion chain', () => {
   assert.ok(canonicalCompletion > deliveredGuard, 'Canonical completion must run after the stop guard');
   assert.ok(statusUpdate > canonicalCompletion, 'Trip status must only be set after the canonical completion chain');
 });
+
+test('finance report supports schemas where trips.planning_date is absent', () => {
+  const economics = section(
+    'app.get("/api/reports/economics"',
+    '// V46: customer pricing'
+  );
+
+  assert.match(economics, /to_jsonb\(t\)->>'planning_date'/);
+  assert.match(economics, /as planning_date/);
+  assert.doesNotMatch(economics, /t\.planning_date/);
+});
