@@ -53,3 +53,10 @@ test('service worker displays pushes and opens the app when clicked', () => {
   assert.match(serviceWorker, /showNotification\(title, options\)/);
   assert.match(serviceWorker, /addEventListener\("notificationclick"/);
 });
+
+test('push setup prompt remains visible when VAPID public key is not configured', () => {
+  const setup = html.slice(html.indexOf('async function offerPushSetup()'), html.indexOf('async function login()'));
+  assert.match(setup, /Push-Benachrichtigungen aktivieren\?/);
+  assert.doesNotMatch(setup, /if\(!cfg\.publicKey\)return/);
+  assert.match(html, /Push ist serverseitig noch nicht aktiviert \(VAPID-Schlüssel fehlen\)/);
+});
