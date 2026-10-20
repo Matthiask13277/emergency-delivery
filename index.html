@@ -254,8 +254,8 @@ async function offerPushSetup(){
   if(!("Notification" in window)||!("serviceWorker" in navigator)||!("PushManager" in window))return;
   if(Notification.permission==="denied")return;
   try{
-    const cfg=await api("/api/notifications/vapid-public-key");
-    if(!cfg.publicKey)return;
+    // Show the setup prompt even when server keys are missing, so employees/admins
+    // can see that push setup is available; the enable action reports missing VAPID config.
     const registration=await navigator.serviceWorker.ready;
     if(await registration.pushManager.getSubscription())return;
     if(document.getElementById("ed-push-setup"))return;
