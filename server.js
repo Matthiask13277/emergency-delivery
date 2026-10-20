@@ -5705,11 +5705,10 @@ app.get("/api/customer-communication/webhook-security-v123",auth,roles("Admin"),
   }catch(e){res.status(500).json({error:e.message})}
 });
 
-app.post("/api/webhooks/communication-v122/:provider",async(req,res)=>{
-  try{
-    const body=req.body||{}; body.provider=req.params.provider;
-    const result=await v122ApplyWebhook(body); res.json(result);
-  }catch(e){res.status(400).json({error:e.message})}
+// Legacy unsigned webhook disabled for the employee-only production release.
+// Integrations must use the signed V123 endpoint with X-Webhook-Signature.
+app.post("/api/webhooks/communication-v122/:provider",async(_req,res)=>{
+  return res.status(410).json({error:"Legacy unsigned webhook disabled. Use the signed communication-v123 endpoint."});
 });
 app.get("/api/customer-communication/delivery-events-v122",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
