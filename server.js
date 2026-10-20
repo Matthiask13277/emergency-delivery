@@ -294,7 +294,7 @@ const q=async(s,p=[])=>{
   const rows=(await pool.query(s,p)).rows;
   // New trips may be created by several workflows; observe the shared insert path
   // so each workflow triggers the same all-staff notification.
-  if(/^\\s*insert\\s+into\\s+trips\\b/i.test(String(s)) && rows.length && typeof v81SendPushAllUsers==="function"){
+  if(/^\s*insert\s+into\s+trips\b/i.test(String(s)) && rows.length && typeof v81SendPushAllUsers==="function"){
     const trip=rows[0];
     Promise.resolve().then(()=>v81SendPushAllUsers(
       "Neue Fahrt in Emergency Delivery",
