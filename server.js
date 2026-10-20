@@ -292,6 +292,16 @@ app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
 // Compatibility bridge: older endpoint code treats q() as both an array and a pg result.
 const q=async(s,p=[])=>{
   const rows=(await pool.query(s,p)).rows;
+  // New trips may be created by several workflows; observe the shared insert path
+  // so each workflow triggers the same all-staff notification.
+  if(/^\\s*insert\\s+into\\s+trips\\b/i.test(String(s)) && rows.length && typeof v81SendPushAllUsers==="function"){
+    const trip=rows[0];
+    Promise.resolve().then(()=>v81SendPushAllUsers(
+      "Neue Fahrt in Emergency Delivery",
+      `Fahrt ${trip.trip_number||trip.id} wurde angelegt.`,
+      {type:"trip_created",trip_id:trip.id,trip_number:trip.trip_number||null}
+    )).catch(err=>console.error("Push neue Fahrt:",err.message));
+  }
   // Array consumers keep working; legacy callers using result.rows also work.
   rows.rows=rows;
   return rows;
@@ -3945,6 +3955,37 @@ async function v81SendPush(title,body,data={}){
 }
 
 
+// Push notifications for all active employees. Existing alert pushes remain scoped
+// to admins/dispatchers; only explicit business events use this all-staff sender.
+async function v81SendPushAllUsers(title,body,data={}){
+  try{
+    const webpush=require("web-push");
+    const pub=process.env.VAPID_PUBLIC_KEY||"",priv=process.env.VAPID_PRIVATE_KEY||"",subject=process.env.VAPID_SUBJECT||"mailto:admin@example.com";
+    if(!pub||!priv)return {sent:0,disabled:true};
+    webpush.setVapidDetails(subject,pub,priv);
+    await q(`create table if not exists push_subscriptions(
+      id uuid primary key default gen_random_uuid(),
+      user_id uuid references users(id) on delete cascade,
+      endpoint text unique not null,
+      subscription_json text not null,
+      created_at timestamptz not null default now(),
+      last_seen_at timestamptz not null default now()
+    )`);
+    const subs=await q(`select ps.* from push_subscriptions ps join users u on u.id=ps.user_id where u.active=true`);
+    let sent=0;
+    for(const sub of subs){
+      try{
+        await webpush.sendNotification(JSON.parse(sub.subscription_json),JSON.stringify({title,body,data,tag:data.type==="trip_created"?"ed-trip-"+(data.trip_id||"new"):"ed-calendar-"+(data.event_id||"new")}));
+        sent++;
+      }catch(e){
+        if(e.statusCode===404||e.statusCode===410) await q(`delete from push_subscriptions where id=$1`,[sub.id]);
+        else console.warn("Push recipient failed:",e.statusCode||e.message);
+      }
+    }
+    return {sent,disabled:false};
+  }catch(e){console.error("All-staff push:",e.message);return {sent:0,error:e.message};}
+}
+
 // V82 driver day view
 app.get("/api/driver/day-v82",auth,roles("Driver"),async(req,res)=>{
   try{
@@ -6716,7 +6757,10 @@ app.post('/api/calendar/events',auth,roles('Admin','Dispatcher','Accounting'),as
     const r=await q(`insert into calendar_events(title,description,start_date,start_time,end_date,end_time,all_day,location,event_type,created_by) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning *`,[
       b.title.trim(),b.description||'',b.startDate,b.startTime||null,b.endDate||null,b.endTime||null,!!b.allDay,b.location||'',b.eventType||'Termin',req.user.id
     ]);
-    await audit(req,'CALENDAR_CREATED',r[0].title); res.status(201).json(r[0]);
+    await audit(req,'CALENDAR_CREATED',r[0].title);
+    const when=[r[0].start_date,r[0].start_time].filter(Boolean).join(" ");
+    await v81SendPushAllUsers("Neuer Kalendereintrag",`${r[0].title}${when?" · "+when:""}`,{type:"calendar_created",event_id:r[0].id});
+    res.status(201).json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.patch('/api/calendar/events/:id',auth,roles('Admin','Dispatcher','Accounting'),async(req,res)=>{
