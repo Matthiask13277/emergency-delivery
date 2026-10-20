@@ -858,6 +858,13 @@ app.post('/api/orders/create-trip', auth, async (req,res) => {
       VALUES($1,$2,'Planned',$3,$4,$5) RETURNING *
     `,[driver_id||null,vehicle_id||null,total,totalPrice,`V12 automatisch aus ${orders.length} Auftrag/Aufträgen erstellt`]);
     const trip = tripRows[0];
+    if(typeof v81SendPushAllUsers==="function"){
+      Promise.resolve().then(()=>v81SendPushAllUsers(
+        "Neue Fahrt in Emergency Delivery",
+        `Fahrt ${trip.trip_number||trip.id} wurde angelegt.`,
+        {type:"trip_created",trip_id:trip.id,trip_number:trip.trip_number||null}
+      )).catch(err=>console.error("Push neue Fahrt:",err.message));
+    }
     let seq=1;
     for (const o of orders) {
       await pool.query(`
