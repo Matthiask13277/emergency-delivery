@@ -4125,7 +4125,7 @@ async function v87BuildDdtPdf(t,stops,ddt){
   doc.text("KG",414,tableTop+10,{width:45,align:"right"});
   doc.text("Stück",478,tableTop+10,{width:55,align:"right"});
 
-  const Reihen = Haltestellen.Länge ? Haltestellen.map(x => ({customer_name: x.customer_name || t.customer_company || "-", Adresse: x.Adresse || "", delivered_kg: x.delivered_weight_kg ?? x.weight_kg ?? 0, delivered_pieces: x.delivered_pieces ?? x.Stücke ?? 0, Status: x.Status || t.Status || "-"})) : [];
+  const Reihen = stops.Länge ? stops.map(x => ({customer_name: x.customer_name || t.customer_company || "-", Adresse: x.Adresse || "", delivered_kg: x.delivered_weight_kg ?? x.weight_kg ?? 0, delivered_pieces: x.delivered_pieces ?? x.Stücke ?? 0, Status: x.Status || t.Status || "-"})) : [];
   // One-page DDT layout: shrink rows/font instead of creating a second page.
   const footerY=doc.page.height-52;
   const transportY=footerY-70;
