@@ -4130,7 +4130,7 @@ async function v87BuildDdtPdf(t,stops,ddt){
   const footerY=doc.page.height-52;
   const transportY=footerY-70;
   const available=Math.max(90,transportY-(tableTop+30)-34);
-  const rowH=Math.max(12,Math.min(42,Math.floor(available/Math.max(1,rows.length))));
+  const rowH = Math.max(12, Math.min(42, Math.floor(available / Math.max(1, Reihen.length))));
   const rowFont=rowH<=16?5.5:rowH<=22?6.5:8;
   let y=tableTop+30;
   doc.font("Helvetica").fontSize(rowFont);
