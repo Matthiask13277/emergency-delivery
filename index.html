@@ -263,7 +263,12 @@ async function offerPushSetup(){
     panel.id="ed-push-setup";
     panel.setAttribute("role","dialog");
     panel.setAttribute("aria-label","Push-Benachrichtigungen einrichten");
-    panel.style.cssText="position:fixed;right:20px;bottom:20px;z-index:99999;max-width:390px;background:#fff;color:#172033;border:1px solid #d0d5dd;border-radius:14px;box-shadow:0 12px 36px #10182830;padding:18px;font:14px Arial,sans-serif";
+    panel.style.cssText="position:fixed;right:20px;bottom:20px;z-index:2147483647;max-width:390px;background:#fff;color:#172033;border:1px solid #d0d5dd;border-radius:14px;box-shadow:0 12px 36px #10182830;padding:18px;font:14px Arial,sans-serif";
+    // App-wide section/modal styles can set display:none; force this opt-in prompt visible.
+    panel.style.setProperty("display","block","important");
+    panel.style.setProperty("visibility","visible","important");
+    panel.style.setProperty("opacity","1","important");
+    panel.style.setProperty("pointer-events","auto","important");
     panel.innerHTML='<strong style="display:block;font-size:16px;margin-bottom:8px">Push-Benachrichtigungen aktivieren?</strong><p style="margin:0 0 14px;line-height:1.45">Erhalte Hinweise zu neuen Fahrten und Kalendereinträgen auch dann, wenn Emergency Delivery nicht geöffnet ist.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="ed-push-enable" class="btn" style="background:#f97316;color:#fff;border:0">Push aktivieren</button><button id="ed-push-later" class="btn">Später</button></div>';
     document.body.appendChild(panel);
     document.getElementById("ed-push-enable").addEventListener("click",enableEmergencyPush);
