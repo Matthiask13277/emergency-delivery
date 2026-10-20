@@ -6118,6 +6118,9 @@ async function v131FinalizeDeliveredTrip(tripId){
  const t=tr.rows[0];
  const stops=await q(`select * from trip_stops where trip_id=$1 order by stop_order`,[tripId]);
  if(!stops.rows.length || stops.rows.some(x=>!x.delivered_at)) return {completed:false,reason:"Not all stops delivered"};
+ // Reuse the canonical completion chain so legacy/sweep finalization also creates or completes the DDT.
+ // Keep the PDF layout unchanged; a signature is optional and is shown only when one was captured.
+ await v15TripComplete(tripId);
  await q(`update trips set status='Delivered',updated_at=now() where id=$1`,[tripId]);
 
  let inv=await q(`select * from invoices where trip_id=$1 order by issue_date desc limit 1`,[tripId]);
