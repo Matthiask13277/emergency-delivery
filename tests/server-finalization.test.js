@@ -63,3 +63,19 @@ test('finance report supports schemas where trips.planning_date is absent', () =
   assert.match(economics, /as planning_date/);
   assert.doesNotMatch(economics, /t\.planning_date/);
 });
+
+test('finance dashboard initializes its cost tables before querying them', () => {
+  const schema = section(
+    'async function ensureEconomicsSchema(){',
+    'let economicsSchemaReady=null;'
+  );
+  for (const table of ['trip_costs', 'fuel_entries', 'vehicle_costs']) {
+    assert.match(schema, new RegExp('CREATE TABLE IF NOT EXISTS ' + table));
+  }
+
+  const economics = section(
+    'app.get("/api/reports/economics"',
+    '// V46: customer pricing'
+  );
+  assert.match(economics, /await getEconomicsSchemaReady\(\)/);
+});

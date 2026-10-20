@@ -200,6 +200,68 @@ async function ensureV183Columns(){
   await q(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
 }
 
+// Ensure the economics dashboard's supporting tables exist in older hosted databases.
+// All statements are idempotent and preserve existing rows.
+async function ensureEconomicsSchema(){
+  await q(`CREATE TABLE IF NOT EXISTS trip_costs(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id uuid NOT NULL,
+    cost_type text NOT NULL DEFAULT 'other',
+    amount_net numeric NOT NULL DEFAULT 0,
+    cost_date date NOT NULL DEFAULT CURRENT_DATE,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`ALTER TABLE trip_costs ADD COLUMN IF NOT EXISTS trip_id uuid`);
+  await q(`ALTER TABLE trip_costs ADD COLUMN IF NOT EXISTS cost_type text DEFAULT 'other'`);
+  await q(`ALTER TABLE trip_costs ADD COLUMN IF NOT EXISTS amount_net numeric DEFAULT 0`);
+  await q(`ALTER TABLE trip_costs ADD COLUMN IF NOT EXISTS cost_date date DEFAULT CURRENT_DATE`);
+  await q(`ALTER TABLE trip_costs ADD COLUMN IF NOT EXISTS note text`);
+  await q(`ALTER TABLE trip_costs ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
+
+  await q(`CREATE TABLE IF NOT EXISTS fuel_entries(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    vehicle_id uuid,
+    entry_date date NOT NULL DEFAULT CURRENT_DATE,
+    liters numeric NOT NULL DEFAULT 0,
+    price_net numeric NOT NULL DEFAULT 0,
+    odometer_km numeric,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS vehicle_id uuid`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS entry_date date DEFAULT CURRENT_DATE`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS liters numeric DEFAULT 0`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS price_net numeric DEFAULT 0`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS odometer_km numeric`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS note text`);
+  await q(`ALTER TABLE fuel_entries ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
+
+  await q(`CREATE TABLE IF NOT EXISTS vehicle_costs(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    vehicle_id uuid,
+    cost_date date NOT NULL DEFAULT CURRENT_DATE,
+    cost_type text NOT NULL DEFAULT 'other',
+    amount_net numeric NOT NULL DEFAULT 0,
+    note text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS vehicle_id uuid`);
+  await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS cost_date date DEFAULT CURRENT_DATE`);
+  await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS cost_type text DEFAULT 'other'`);
+  await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS amount_net numeric DEFAULT 0`);
+  await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS note text`);
+  await q(`ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now()`);
+}
+
+let economicsSchemaReady=null;
+function getEconomicsSchemaReady(){
+  if(!economicsSchemaReady){
+    economicsSchemaReady=ensureEconomicsSchema()
+      .catch(err=>{economicsSchemaReady=null;throw err;});
+  }
+  return economicsSchemaReady;
+}
 async function ensureCompanySettings(){
   await q(`CREATE TABLE IF NOT EXISTS company_settings(
     id integer PRIMARY KEY DEFAULT 1,
@@ -267,6 +329,7 @@ runSchemaInitializer("trips.priority",ensureTripsPriorityColumn);
 runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
 runSchemaInitializer("V183",ensureV183Columns);
 runSchemaInitializer("company settings",ensureCompanySettings);
+runSchemaInitializer("economics tables",ensureEconomicsSchema);
 async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:true,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:false,operations:false,notifications:true}};
 const PERM_PATHS=[
@@ -2681,6 +2744,7 @@ app.post("/api/vehicles/:id/fuel",auth,roles("Admin","Dispatcher","Accounting"),
 });
 app.get("/api/reports/economics",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
+    await getEconomicsSchemaReady();
     const from=req.query.from||new Date(new Date().setDate(new Date().getDate()-30)).toISOString().slice(0,10);
     const to=req.query.to||new Date().toISOString().slice(0,10);
     // Read planning_date through the row's JSON representation so older hosted schemas
