@@ -3948,6 +3948,30 @@ app.get("/api/notifications/vapid-public-key",auth,roles("Admin","Dispatcher","D
 });
 
 
+// Push delivery diagnostics: send a test notification to the currently logged-in device.
+app.post("/api/notifications/push-test",auth,roles("Admin","Dispatcher","Driver","Accounting"),async(req,res)=>{
+  try{
+    const rows=await q("select id,subscription_json from push_subscriptions where user_id=$1 order by last_seen_at desc",[req.user.id]);
+    if(!rows.length)return res.status(404).json({ok:false,error:"Für diesen Benutzer ist kein Push-Abonnement gespeichert. Bitte Push auf diesem Gerät erneut aktivieren."});
+    const webpush=require("web-push");
+    const pub=process.env.VAPID_PUBLIC_KEY||"",priv=process.env.VAPID_PRIVATE_KEY||"",subject=process.env.VAPID_SUBJECT||"mailto:admin@example.com";
+    if(!pub||!priv)return res.status(503).json({ok:false,error:"VAPID-Schlüssel fehlen auf dem Server."});
+    webpush.setVapidDetails(subject,pub,priv);
+    let sent=0;const failures=[];
+    for(const row of rows){
+      try{
+        await webpush.sendNotification(JSON.parse(row.subscription_json),JSON.stringify({title:"Emergency Delivery – Test",body:"Push-Zustellung funktioniert auf diesem Gerät.",data:{type:"push_test"},tag:"ed-push-test-"+Date.now()}));
+        sent++;
+      }catch(e){
+        failures.push({statusCode:e.statusCode||null,message:String(e.message||e).slice(0,240)});
+        if(e.statusCode===404||e.statusCode===410)await q("delete from push_subscriptions where id=$1",[row.id]);
+      }
+    }
+    console.log("Push test result",JSON.stringify({userId:req.user.id,subscriptions:rows.length,sent,failures}));
+    res.json({ok:sent>0,subscriptions:rows.length,sent,failures});
+  }catch(e){console.error("Push test endpoint:",e);res.status(500).json({ok:false,error:e.message})}
+});
+
 // V81 actual web push sender
 async function v81SendPush(title,body,data={}){
   try{
