@@ -789,7 +789,9 @@ app.post('/api/orders', auth, async (req,res) => {
       INSERT INTO orders(customer_id,reference,pickup_address,pickup_city,delivery_address,delivery_city,weight_kg,pieces,price_net)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *
     `,[customer_id||null,reference||null,pickup_address||null,pickup_city||null,delivery_address,delivery_city||null,weight,Number(pieces||1),Number(price_net||0)]);
-    res.status(201).json(rows[0]);
+    const order=rows[0];
+    Promise.resolve().then(()=>v81SendPushAllUsers("Neuer Auftrag in Emergency Delivery",`Auftrag ${order.reference||order.id} wurde angelegt.`,{type:"order_created",order_id:order.id,reference:order.reference||null})).catch(err=>console.error("Push neuer Auftrag:",err.message));
+    res.status(201).json(order);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
@@ -2873,7 +2875,9 @@ app.post("/api/orders/create",auth,roles("Admin","Dispatcher"),async(req,res)=>{
     const vals=[req.body.customer_id,ref,req.body.pickup_address||"",req.body.pickup_city||"",req.body.delivery_address,req.body.delivery_city||"",kg,Math.max(1,parseInt(req.body.pieces||1,10)),req.body.customer_reference||"",req.body.priority||"normal",req.body.requested_date||null,req.body.time_window_start||null,req.body.time_window_end||null,Math.max(1,parseInt(req.body.estimated_service_min||15,10)),price,"new"];
     const ph=vals.map((_,i)=>"$"+(i+1)).join(",");
     const r=await q(`insert into orders(${cols.join(",")}) values(${ph}) returning *`,vals);
-    await audit(req,"ORDER_CREATED",ref);res.json(r[0]);
+    await audit(req,"ORDER_CREATED",ref);
+    Promise.resolve().then(()=>v81SendPushAllUsers("Neuer Auftrag in Emergency Delivery",`Auftrag ${r[0].reference||r[0].id} wurde angelegt.`,{type:"order_created",order_id:r[0].id,reference:r[0].reference||null})).catch(err=>console.error("Push neuer Auftrag:",err.message));
+    res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
 app.post("/api/orders/:id/price-preview",auth,roles("Admin","Dispatcher"),async(req,res)=>{
