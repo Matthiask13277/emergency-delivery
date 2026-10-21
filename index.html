@@ -221,32 +221,55 @@ function urlBase64ToUint8Array(base64String){
 }
 async function enableEmergencyPush(){
   const button=document.getElementById("ed-push-enable");
-  if(button){button.disabled=true;button.textContent="Wird eingerichtet…";}
+  let stage="Vorbereitung";
+  const timeout=(promise,ms,label)=>Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+" dauert zu lange. Bitte App neu öffnen und erneut versuchen.")),ms))
+  ]);
+  if(button){button.disabled=true;button.textContent="Prüfe Berechtigung…";}
   try{
     if(!("Notification" in window)||!("serviceWorker" in navigator)||!("PushManager" in window))
       throw new Error("Dieser Browser unterstützt keine Web-Push-Benachrichtigungen.");
-    const permission=await Notification.requestPermission();
-    if(permission!=="granted") throw new Error("Benachrichtigungen sind nicht erlaubt. Bitte erlaube sie in den Browser-Einstellungen.");
-    const cfg=await api("/api/notifications/vapid-public-key");
+    stage="Berechtigung";
+    let permission=Notification.permission;
+    if(permission!=="granted"){
+      permission=await timeout(Notification.requestPermission(),12000,"iOS-Berechtigungsabfrage");
+    }
+    if(permission!=="granted"){
+      throw new Error("iOS meldet Berechtigung '"+permission+"'. Öffne Emergency Delivery über das Home-Bildschirm-Symbol und erlaube Mitteilungen in den iPhone-Einstellungen.");
+    }
+    if(button)button.textContent="Lade Push-Konfiguration…";
+    stage="VAPID-Schlüssel vom Server laden";
+    const cfg=await timeout(api("/api/notifications/vapid-public-key"),15000,"Abruf des VAPID-Schlüssels");
     if(!cfg.publicKey) throw new Error("Push ist serverseitig noch nicht aktiviert (VAPID-Schlüssel fehlen).");
-    const registration=await navigator.serviceWorker.ready;
-    let subscription=await registration.pushManager.getSubscription();
+    if(button)button.textContent="Prüfe Service Worker…";
+    stage="Service Worker bereitstellen";
+    const registration=await timeout(navigator.serviceWorker.ready,15000,"Service Worker");
+    if(!registration.pushManager)throw new Error("Der aktive Service Worker unterstützt PushManager nicht.");
+    stage="Vorhandenes Push-Abonnement prüfen";
+    let subscription=await timeout(registration.pushManager.getSubscription(),10000,"Prüfen des Push-Abonnements");
     if(!subscription){
-      subscription=await registration.pushManager.subscribe({
+      if(button)button.textContent="Registriere dieses iPhone…";
+      stage="iOS-Push-Abonnement erstellen";
+      subscription=await timeout(registration.pushManager.subscribe({
         userVisibleOnly:true,
         applicationServerKey:urlBase64ToUint8Array(cfg.publicKey)
-      });
+      }),20000,"Erstellen des iOS-Push-Abonnements");
     }
-    await api("/api/notifications/push-subscription",{
+    if(button)button.textContent="Speichere Push-Anmeldung…";
+    stage="Push-Abonnement auf dem Server speichern";
+    await timeout(api("/api/notifications/push-subscription",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({subscription:subscription.toJSON()})
-    });
+    }),15000,"Speichern der Push-Anmeldung");
     dismissPushSetup();
     alert("Push-Benachrichtigungen sind auf diesem Gerät aktiviert.");
   }catch(e){
     if(button){button.disabled=false;button.textContent="Push aktivieren";}
-    alert(e.message||"Push konnte nicht eingerichtet werden.");
+    const detail=e&&e.message?e.message:String(e);
+    alert("Push-Einrichtung fehlgeschlagen.\nSchritt: "+stage+"\nFehler: "+detail);
+    console.error("[Emergency Delivery Push]",stage,e);
   }
 }
 async function offerPushSetup(){
