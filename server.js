@@ -536,7 +536,7 @@ app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher","Accounting"),as
     res.json({ordered:order.map((x,i)=>({position:i+1,id:x.id,tripNumber:x.trip_number,customer:x.company,address:x.stop_address||x.customer_address,city:x.stop_city||x.customer_city})),mapsUrl:url});
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/trips/:id",auth,async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=req.user.role==="Driver"?["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"]:["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
+app.patch("/api/trips/:id",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=req.user.role==="Driver"?["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"]:["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
 app.delete("/api/trips/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const t=(await q("select id,trip_number,status from trips where id=$1",[req.params.id]))[0];
@@ -694,7 +694,7 @@ app.get("/api/trips/:id/stops",auth,async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message})}
 });
 
-app.patch("/api/stops/:id",auth,async(req,res)=>{
+app.patch("/api/stops/:id",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   try{
     const s=(await q("select ts.id,t.driver_id from trip_stops ts join trips t on t.id=ts.trip_id where ts.id=$1",[req.params.id]))[0];
     if(!s)return res.status(404).json({error:"Stop nicht gefunden"});
@@ -704,7 +704,7 @@ app.patch("/api/stops/:id",auth,async(req,res)=>{
     res.json(r[0]);
   }catch(e){res.status(500).json({error:e.message||"Stop konnte nicht aktualisiert werden"})}
 });
-app.post("/api/sync",auth,async(req,res)=>{
+app.post("/api/sync",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   const results=[];
   for(const a of (Array.isArray(req.body?.actions)?req.body.actions:[])){
     try{
@@ -767,7 +767,7 @@ app.post("/api/sync",auth,async(req,res)=>{
 
 
 // V12: order workflow, automatic trip creation and driver time events
-app.get('/api/orders', auth, async (req,res) => {
+app.get('/api/orders', auth, roles('Admin','Dispatcher','Accounting'), async (req,res) => {
   try {
     const { rows } = await pool.query(`
       SELECT o.*, c.company AS customer_name
@@ -778,7 +778,7 @@ app.get('/api/orders', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/orders', auth, async (req,res) => {
+app.post('/api/orders', auth, roles('Admin','Dispatcher'), async (req,res) => {
   try {
     const { customer_id, reference, pickup_address, pickup_city, delivery_address, delivery_city,
             weight_kg, pieces, price_net } = req.body;
@@ -795,7 +795,7 @@ app.post('/api/orders', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.patch('/api/orders/:id', auth, async (req,res) => {
+app.patch('/api/orders/:id', auth, roles('Admin','Dispatcher'), async (req,res) => {
   try {
     const allowed = [
       'reference','customer_id','pickup_address','pickup_city','delivery_address','delivery_city',
@@ -879,17 +879,24 @@ app.post('/api/orders/create-trip', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/trips/:id/time', auth, async (req,res) => {
+app.post('/api/trips/:id/time', auth, roles('Admin','Dispatcher','Driver'), async (req,res) => {
   try {
     const { event_type, stop_id=null, note=null } = req.body;
     const allowed = ['shift_start','arrived','departed','trip_start','trip_end'];
     if (!allowed.includes(event_type)) return res.status(400).json({error:'Ungültiger Zeitstempel.'});
+    const trip=(await q("select id,driver_id from trips where id=$1",[req.params.id]))[0];
+    if(!trip)return res.status(404).json({error:'Tour nicht gefunden.'});
+    if(req.user.role==='Driver' && trip.driver_id!==req.user.id)return res.status(403).json({error:'Keine Berechtigung für diese Tour.'});
+    if(stop_id){
+      const stop=(await q("select id from trip_stops where id=$1 and trip_id=$2",[stop_id,trip.id]))[0];
+      if(!stop)return res.status(400).json({error:'Stopp gehört nicht zu dieser Tour.'});
+    }
     const { rows } = await pool.query(`
       INSERT INTO driver_time_events(trip_id,stop_id,driver_id,event_type,note)
       VALUES($1,$2,$3,$4,$5) RETURNING *
-    `,[req.params.id,stop_id,req.user.id,event_type,note]);
-    if (event_type==='arrived' && stop_id) await pool.query(`UPDATE trip_stops SET arrived_at=NOW(),status='Arrived' WHERE id=$1`,[stop_id]);
-    if (event_type==='departed' && stop_id) await pool.query(`UPDATE trip_stops SET departed_at=NOW() WHERE id=$1`,[stop_id]);
+    `,[trip.id,stop_id,req.user.id,event_type,String(note||'').slice(0,500)]);
+    if (event_type==='arrived' && stop_id) await pool.query(`UPDATE trip_stops SET arrived_at=NOW(),status='Arrived' WHERE id=$1 AND trip_id=$2`,[stop_id,trip.id]);
+    if (event_type==='departed' && stop_id) await pool.query(`UPDATE trip_stops SET departed_at=NOW() WHERE id=$1 AND trip_id=$2`,[stop_id,trip.id]);
     res.status(201).json(rows[0]);
   } catch(e) { res.status(500).json({error:e.message}); }
 });
@@ -983,7 +990,7 @@ app.patch('/api/stops/:id', auth, async (req,res) => {
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/trips/:id/reorder-stops', auth, async (req,res) => {
+app.post('/api/trips/:id/reorder-stops', auth, roles('Admin','Dispatcher'), async (req,res) => {
   try {
     const ids = Array.isArray(req.body.stop_ids) ? req.body.stop_ids : [];
     await pool.query('BEGIN');
@@ -1049,7 +1056,7 @@ app.post('/api/notifications/:id/read', auth, async (req,res) => {
 });
 
 // Notify relevant roles whenever dispatch assignment changes.
-app.post('/api/trips/:id/dispatch-notify', auth, async (req,res)=>{
+app.post('/api/trips/:id/dispatch-notify', auth, roles('Admin','Dispatcher'), async (req,res)=>{
   try{
     const {rows}=await pool.query(
       `SELECT t.id,t.driver_id,t.vehicle_id,u.name AS driver_name,v.plate
@@ -2544,7 +2551,7 @@ app.post("/api/users",auth,roles("Admin"),async(req,res)=>{
     await audit(req,"USER_CREATED",username);res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.post("/api/employee-time",auth,async(req,res)=>{
+app.post("/api/employee-time",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{
   try{
     const target=req.user.role==="Admin"&&req.body.user_id?req.body.user_id:req.user.id;
     const type=String(req.body.entry_type||"");
