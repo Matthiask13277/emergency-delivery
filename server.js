@@ -431,12 +431,23 @@ async function ensureDeliveryDocuments(){
     try{await createDdt37({user:{id:null,name:"System",role:"Admin"}},t.id)}catch(e){console.warn("DDT backfill:",t.id,String(e.message||e))}
   }
 }
-app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
-q("select id,name,role from users order by name"),q("select * from customers where archived_at is null order by company"),q(req.user.role==="Driver"?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",req.user.role==="Driver"?[req.user.id]:[]),q("select * from vehicles order by name"),
-q("select * from invoices order by issue_date desc"),q("select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id where coalesce(d.status,'') <> 'Deleted' order by d.issued_at desc"),q("select * from trip_stops order by trip_id,stop_order"),q("select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc"),q("select * from company_settings where id=1")]);
-res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:company[0]||{}})});
+app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();
+const isDriver=req.user.role==="Driver";
+const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
+q("select id,name,role from users order by name"),
+q(isDriver?"select c.* from customers c where c.archived_at is null and exists (select 1 from trips t where t.customer_id=c.id and t.driver_id=$1) order by c.company":"select * from customers where archived_at is null order by company",isDriver?[req.user.id]:[]),
+q(isDriver?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",isDriver?[req.user.id]:[]),
+q(isDriver?"select v.* from vehicles v where exists (select 1 from trips t where t.vehicle_id=v.id and t.driver_id=$1) order by v.name":"select * from vehicles order by name",isDriver?[req.user.id]:[]),
+q(isDriver?"select * from invoices where 1=0":"select * from invoices order by issue_date desc"),
+q(isDriver?"select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id where coalesce(d.status,'') <> 'Deleted' and t.driver_id=$1 order by d.issued_at desc":"select d.*,t.trip_number,c.company customer_company from delivery_documents d left join trips t on t.id=d.trip_id left join customers c on c.id=t.customer_id where coalesce(d.status,'') <> 'Deleted' order by d.issued_at desc",isDriver?[req.user.id]:[]),
+q(isDriver?"select s.* from trip_stops s join trips t on t.id=s.trip_id where t.driver_id=$1 order by s.trip_id,s.stop_order":"select * from trip_stops order by trip_id,stop_order",isDriver?[req.user.id]:[]),
+q(isDriver?"select g.* from gps_points g join trips t on t.id=g.trip_id where t.driver_id=$1 and g.created_at=(select max(g2.created_at) from gps_points g2 where g2.trip_id=g.trip_id) order by g.created_at desc":"select g.* from gps_points g join (select trip_id,max(created_at) created_at from gps_points group by trip_id) latest on latest.trip_id=g.trip_id and latest.created_at=g.created_at order by g.created_at desc",isDriver?[req.user.id]:[]),
+q("select * from company_settings where id=1")]);
+const companyData=company[0]||{};
+if(isDriver){delete companyData.iban;delete companyData.bic;delete companyData.bank_name;delete companyData.tax_number;delete companyData.vat_id;}
+res.json({user:req.user,users,customers,trips,vehicles,invoices,ddts,stops,gps,company:companyData})});
 
-app.get("/api/company-settings",auth,async(req,res)=>{
+app.get("/api/company-settings",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{await ensureCompanySettings();const r=await q("select * from company_settings where id=1");res.json(r[0]||{});}catch(e){res.status(500).json({error:e.message})}
 });
 app.patch("/api/company-settings",auth,roles("Admin"),async(req,res)=>{
