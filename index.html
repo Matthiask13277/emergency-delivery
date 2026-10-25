@@ -233,10 +233,10 @@ async function enableEmergencyPush(){
     stage="Berechtigung";
     let permission=Notification.permission;
     if(permission!=="granted"){
-      permission=await timeout(Notification.requestPermission(),12000,"iOS-Berechtigungsabfrage");
+      permission=await timeout(Notification.requestPermission(),12000,"Berechtigungsabfrage");
     }
     if(permission!=="granted"){
-      throw new Error("iOS meldet Berechtigung '"+permission+"'. Öffne Emergency Delivery über das Home-Bildschirm-Symbol und erlaube Mitteilungen in den iPhone-Einstellungen.");
+      throw new Error("Das Gerät meldet Berechtigung '"+permission+"'. Bitte prüfe die Benachrichtigungseinstellungen dieses Geräts.");
     }
     if(button)button.textContent="Lade Push-Konfiguration…";
     stage="VAPID-Schlüssel vom Server laden";
@@ -249,12 +249,12 @@ async function enableEmergencyPush(){
     stage="Vorhandenes Push-Abonnement prüfen";
     let subscription=await timeout(registration.pushManager.getSubscription(),10000,"Prüfen des Push-Abonnements");
     if(!subscription){
-      if(button)button.textContent="Registriere dieses iPhone…";
-      stage="iOS-Push-Abonnement erstellen";
+      if(button)button.textContent="Registriere dieses Gerät…";
+      stage="Push-Abonnement erstellen";
       subscription=await timeout(registration.pushManager.subscribe({
         userVisibleOnly:true,
         applicationServerKey:urlBase64ToUint8Array(cfg.publicKey)
-      }),20000,"Erstellen des iOS-Push-Abonnements");
+      }),20000,"Erstellen des Push-Abonnements");
     }
     if(button)button.textContent="Speichere Push-Anmeldung…";
     stage="Push-Abonnement auf dem Server speichern";
