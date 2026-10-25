@@ -17,18 +17,6 @@ app.use((req,res,next)=>{
   next();
 });
 const fs=require("fs");
-const smtpConfigDir=process.env.EMERGENCY_CONFIG_DIR||path.join(__dirname,"config");
-const smtpConfigFile=path.join(smtpConfigDir,"smtp.json");
-function loadSmtpConfig(){try{return JSON.parse(fs.readFileSync(smtpConfigFile,"utf8"))}catch(_e){return {host:"smtp.gmail.com",port:587,secure:false,user:"",pass:"",from:""}}}
-function saveSmtpConfig(cfg){fs.mkdirSync(smtpConfigDir,{recursive:true});fs.writeFileSync(smtpConfigFile,JSON.stringify(cfg,null,2),"utf8");}
-let smtpCfg=loadSmtpConfig();
-function smtpTransport(){
-  // Outbound email is intentionally disabled; Gmail import remains independent.
-  return null;
-  const nodemailer=require("nodemailer");
-  if(!smtpCfg.user||!smtpCfg.pass) return null;
-  return nodemailer.createTransport({host:smtpCfg.host||"smtp.gmail.com",port:Number(smtpCfg.port||587),secure:!!smtpCfg.secure,auth:{user:smtpCfg.user,pass:smtpCfg.pass},connectionTimeout:15000,greetingTimeout:15000,socketTimeout:20000});
-}
 app.use(express.json({limit:"12mb"}));
 
 const DESKTOP_CLOUD_URL="https://emergency-delivery.emergency-delivery1.blitz.cloud";
@@ -2396,12 +2384,7 @@ app.post("/api/portal/invoices/:id/paid-notice",portalAuth39,async(req,res)=>{
 });
 
 
-// V40: email delivery
-
-let mailer40=null;
-try{
-  mailer40=smtpTransport();
-}catch(e){console.warn("SMTP module unavailable; email remains queued.",e.message)}
+// Outbound email is disabled. Gmail import and push notifications remain independent.
 
 async function queueCustomerEmail40({customerId,invoiceId=null,ddtId=null,to,subject,html}){
   if(!to) throw new Error("Kunden-E-Mail fehlt");
