@@ -1,6 +1,19 @@
 name: Server syntax and schema integration checks
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'server.js'
+      - 'gmail-pagination.js'
+      - 'tests/gmail-pagination.test.js'
+      - 'tests/offline-sync.test.js'
+      - 'sync.js'
+      - 'package.json'
+      - 'index.html'
+      - 'local-db.js'
+      - 'db/runtime-delay-repair.sql'
+      - '.github/workflows/server-syntax.yml'
   pull_request:
     branches: [main]
     paths:
