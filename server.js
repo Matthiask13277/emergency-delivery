@@ -340,7 +340,7 @@ runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
 runSchemaInitializer("V183",ensureV183Columns);
 runSchemaInitializer("company settings",ensureCompanySettings);
 runSchemaInitializer("economics tables",ensureEconomicsSchema);
-async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,username:u.username,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
+async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,id:u.id,username:u.username,name:u.name,role:u.role,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:true,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:false,operations:false,notifications:true}};
 const PERM_PATHS=[
   [/^\/api\/(trips|routes|planning|pricing|recurring-orders)/,'auftrag_plus'],[/^\/api\/customers/,'customers'],[/^\/api\/vehicles/,'vehicles'],[/^\/api\/calendar/,'calendar'],[/^\/api\/(documents|ddt)/,'documents'],[/^\/api\/invoices/,'invoices'],[/^\/api\/(finance|receivables|dunning)/,'finance'],[/^\/api\/(order-360|orders)/,'order360'],[/^\/api\/(operations|control-center)/,'operations'],[/^\/api\/notifications(?!\/(?:vapid-public-key|push-subscription)$)/,'notifications'],[/^\/api\/employees/,'users_manage'],[/^\/api\/company-settings/,'company'],[/^\/api\/driver/,'driver'],[/^\/api\/fleet/,'vehicles']
@@ -404,7 +404,34 @@ function maps(origin,dest,stops=[]){
 }
 
 app.get("/api/health",async(req,res)=>{try{await q("select 1");res.json({ok:true})}catch(e){res.status(503).json({ok:false})}});
-app.post("/api/login",async(req,res)=>{const u=(await q("select id,username,name,role,password_hash,must_change_password,active from users where username=$1",[String(req.body.username||"").trim()]))[0];if(!u||u.active===false||!(await bcrypt.compare(String(req.body.password||""),u.password_hash)))return res.status(401).json({error:"Benutzername oder Passwort ist falsch"});await q("update users set last_seen_at=now() where id=$1",[u.id]);res.json({token:jwt.sign({id:u.id,name:u.name,role:u.role},JWT_SECRET,{expiresIn:global.__EMERGENCY_DESKTOP_MODE__?"30d":"12h"}),user:{id:u.id,username:u.username,name:u.name,role:u.role,must_change_password:!!u.must_change_password}})});
+// Temporary login throttling: no permanent account lockout.
+const loginAttempts=new Map();
+function loginRateKeys(req){
+ const ip=String(req.ip||req.socket?.remoteAddress||"unknown").slice(0,120);
+ const username=String(req.body?.username||"").trim().toLowerCase().slice(0,160);
+ return {ipKey:"login-ip:"+ip,userKey:"login-user:"+ip+":"+username};
+}
+function checkLoginLimit(req,res,next){
+ const now=Date.now(),keys=loginRateKeys(req);
+ if(loginAttempts.size>5000){for(const [key,value] of loginAttempts)if(value.resetAt<=now)loginAttempts.delete(key);}
+ const ip=loginAttempts.get(keys.ipKey),user=loginAttempts.get(keys.userKey);
+ if((ip&&ip.resetAt>now&&ip.count>=30)||(user&&user.resetAt>now&&user.count>=8)){
+  const reset=Math.max(ip?.resetAt||0,user?.resetAt||0);
+  res.set("Retry-After",String(Math.max(1,Math.ceil((reset-now)/1000))));
+  return res.status(429).json({error:"Zu viele Anmeldeversuche. Bitte warte einige Minuten und versuche es erneut."});
+ }
+ req.loginRateKeys=keys;next();
+}
+function recordLoginFailure(req){
+ const now=Date.now(),keys=req.loginRateKeys||loginRateKeys(req);
+ for(const key of [keys.ipKey,keys.userKey]){
+  const current=loginAttempts.get(key);
+  if(!current||current.resetAt<=now)loginAttempts.set(key,{count:1,resetAt:now+15*60*1000});
+  else current.count++;
+ }
+}
+function clearLoginFailure(req){const keys=req.loginRateKeys||loginRateKeys(req);loginAttempts.delete(keys.userKey);}
+app.post("/api/login",checkLoginLimit,async(req,res)=>{const u=(await q("select id,username,name,role,password_hash,must_change_password,active from users where username=$1",[String(req.body.username||"").trim()]))[0];if(!u||u.active===false||!(await bcrypt.compare(String(req.body.password||""),u.password_hash))){recordLoginFailure(req);return res.status(401).json({error:"Benutzername oder Passwort ist falsch"});}clearLoginFailure(req);await q("update users set last_seen_at=now() where id=$1",[u.id]);res.json({token:jwt.sign({id:u.id,name:u.name,role:u.role},JWT_SECRET,{expiresIn:global.__EMERGENCY_DESKTOP_MODE__?"30d":"12h"}),user:{id:u.id,username:u.username,name:u.name,role:u.role,must_change_password:!!u.must_change_password}})});
 app.get("/api/me",auth,async(req,res)=>{
   try{const u=(await q("select id,username,name,role,email,phone,must_change_password,permissions from users where id=$1",[req.user.id]))[0];if(!u)return res.status(404).json({error:"Benutzer nicht gefunden"});res.json(u)}catch(e){res.status(500).json({error:e.message})}
 });
