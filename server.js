@@ -449,7 +449,7 @@ async function ensureDeliveryDocuments(){
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();
 const isDriver=req.user.role==="Driver";
 const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
-q("select id,name,role from users order by name"),
+q(isDriver?"select id,name,role from users where id=$1":"select id,name,role from users order by name",isDriver?[req.user.id]:[]),
 q(isDriver?"select c.* from customers c where c.archived_at is null and exists (select 1 from trips t where t.customer_id=c.id and t.driver_id=$1) order by c.company":"select * from customers where archived_at is null order by company",isDriver?[req.user.id]:[]),
 q(isDriver?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",isDriver?[req.user.id]:[]),
 q(isDriver?"select v.* from vehicles v where exists (select 1 from trips t where t.vehicle_id=v.id and t.driver_id=$1) order by v.name":"select * from vehicles order by name",isDriver?[req.user.id]:[]),
