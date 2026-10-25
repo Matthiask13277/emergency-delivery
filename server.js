@@ -328,7 +328,7 @@ runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
 runSchemaInitializer("V183",ensureV183Columns);
 runSchemaInitializer("company settings",ensureCompanySettings);
 runSchemaInitializer("economics tables",ensureEconomicsSchema);
-async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,id:u.id,username:u.username,name:u.name,role:u.role,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
+async function auth(req,res,next){try{const t=(req.headers.authorization||"").replace("Bearer ","");const token=jwt.verify(t,JWT_SECRET);const u=(await q("select id,username,name,role,permissions,active from users where id=$1",[token.id]))[0];if(!u||u.active===false)return res.status(401).json({error:"Benutzer ist deaktiviert"});req.user={...token,id:u.id,username:u.username,name:u.name,role:u.role,permissions:u.permissions||{}};const hit=PERM_PATHS.find(([re])=>re.test(req.path));const driverTripPatch=req.user.role==="Driver"&&req.method==="PATCH"&&/^\/api\/trips\/[^/]+$/.test(req.path)&&Object.keys(req.body||{}).every(k=>["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"].includes(k));const driverTimeEvent=req.user.role==="Driver"&&["GET","POST"].includes(req.method)&&/^\/api\/trips\/[^/]+\/time$/.test(req.path);if(hit&&!hasPermission(req.user,hit[1])&&!driverTripPatch&&!driverTimeEvent)return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()}catch(e){res.status(401).json({error:"Login required"})}}
 const ROLE_DEFAULTS={Admin:{},Dispatcher:{auftrag_plus:true,customers:true,vehicles:true,calendar:true,documents:true,order360:true,operations:true,notifications:true},Driver:{auftrag_plus:false,customers:false,vehicles:false,calendar:false,documents:true,order360:false,operations:false,notifications:true,driver:true},Accounting:{auftrag_plus:true,customers:true,vehicles:false,calendar:true,documents:true,invoices:true,finance:true,order360:false,operations:false,notifications:true}};
 const PERM_PATHS=[
   [/^\/api\/(trips|routes|planning|pricing|recurring-orders)/,'auftrag_plus'],[/^\/api\/customers/,'customers'],[/^\/api\/vehicles/,'vehicles'],[/^\/api\/calendar/,'calendar'],[/^\/api\/(documents|ddt)/,'documents'],[/^\/api\/invoices/,'invoices'],[/^\/api\/(finance|receivables|dunning)/,'finance'],[/^\/api\/(order-360|orders)/,'order360'],[/^\/api\/(operations|control-center)/,'operations'],[/^\/api\/notifications(?!\/(?:vapid-public-key|push-subscription)$)/,'notifications'],[/^\/api\/employees/,'users_manage'],[/^\/api\/company-settings/,'company'],[/^\/api\/driver/,'driver'],[/^\/api\/fleet/,'vehicles']
@@ -338,7 +338,7 @@ const roles=(...rs)=>(req,res,next)=>{if(!rs.includes(req.user.role))return res.
 async function audit(req,action,details){await q("INSERT INTO audit_log(user_id,user_name,role,action,details) VALUES($1,$2,$3,$4,$5)",[req.user.id,req.user.name,req.user.role,action,String(details)])}
 
 // V176 Mitarbeiterakte
-app.get("/api/employees", auth, roles("Admin","Dispatcher","Accounting","Driver"), async (req,res)=>{
+app.get("/api/employees", auth, roles("Admin","Dispatcher","Accounting"), async (req,res)=>{
   try{res.json(await q(`SELECT u.id,u.username,u.name,u.role,u.phone,u.email,u.address,u.postal_code,u.city,u.license_class,u.entry_date,u.active,u.assigned_vehicle_id,u.permissions,v.name AS vehicle_name,v.plate AS vehicle_plate FROM users u LEFT JOIN vehicles v ON v.id=u.assigned_vehicle_id ORDER BY u.name ASC`))}
   catch(e){res.status(500).json({error:e.message})}
 });
@@ -449,7 +449,7 @@ async function ensureDeliveryDocuments(){
 app.get("/api/state",auth,async(req,res)=>{await ensureCompanySettings();await ensureDeliveryDocuments();
 const isDriver=req.user.role==="Driver";
 const [users,customers,trips,vehicles,invoices,ddts,stops,gps,company]=await Promise.all([
-q("select id,name,role from users order by name"),
+q(isDriver?"select id,name,role from users where id=$1":"select id,name,role from users order by name",isDriver?[req.user.id]:[]),
 q(isDriver?"select c.* from customers c where c.archived_at is null and exists (select 1 from trips t where t.customer_id=c.id and t.driver_id=$1) order by c.company":"select * from customers where archived_at is null order by company",isDriver?[req.user.id]:[]),
 q(isDriver?"select * from trips where driver_id=$1 order by created_at desc":"select * from trips order by created_at desc",isDriver?[req.user.id]:[]),
 q(isDriver?"select v.* from vehicles v where exists (select 1 from trips t where t.vehicle_id=v.id and t.driver_id=$1) order by v.name":"select * from vehicles order by name",isDriver?[req.user.id]:[]),
@@ -562,7 +562,7 @@ app.post("/api/routes/optimize",auth,roles("Admin","Dispatcher","Accounting"),as
     res.json({ordered:order.map((x,i)=>({position:i+1,id:x.id,tripNumber:x.trip_number,customer:x.company,address:x.stop_address||x.customer_address,city:x.stop_city||x.customer_city})),mapsUrl:url});
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/trips/:id",auth,roles("Admin","Dispatcher","Driver"),async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=req.user.role==="Driver"?["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"]:["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
+app.patch("/api/trips/:id",auth,(req,res,next)=>req.user.role==="Driver"?next():roles("Admin","Dispatcher")(req,res,next),async(req,res)=>{try{const t=(await q("select * from trips where id=$1",[req.params.id]))[0];if(!t)return res.status(404).json({error:"Not found"});if(req.user.role==="Driver"&&t.driver_id!==req.user.id)return res.status(403).json({error:"Not your trip"});const allowed=req.user.role==="Driver"?["status","current_lat","current_lng","signature_data","signature_at","delivery_photo"]:["status","driver_id","vehicle_id","route","notes","current_lat","current_lng","signature_data","signature_at","delivery_photo","weight_kg","pieces","price_net"];const a=Object.keys(req.body).filter(k=>allowed.includes(k));if(!a.length)return res.json(t);const vals=a.map(k=>req.body[k]);const set=a.map((k,i)=>`${k}=$${i+1}`).join(",");const r=await q(`update trips set ${set},updated_at=now() where id=$${a.length+1} returning *`,[...vals,req.params.id]);try{await audit(req,"TRIP_UPDATED",r[0].trip_number)}catch(_){}if(req.body.status==="Delivered"&&Number(r[0].price_net)>0){try{await createInvoice38(req,r[0].id)}catch(e){try{await autoInvoice(req,r[0])}catch(_){} }}res.json(r[0])}catch(e){res.status(500).json({error:e.message||"Serverfehler"})}});
 app.delete("/api/trips/:id",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const t=(await q("select id,trip_number,status from trips where id=$1",[req.params.id]))[0];
@@ -645,7 +645,7 @@ app.patch("/api/invoices/:id",auth,roles("Admin","Accounting"),async(req,res)=>{
     res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting","Driver"),async(req,res)=>{
+app.patch("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     await q(`CREATE TABLE IF NOT EXISTS delivery_documents(
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -707,8 +707,8 @@ app.delete("/api/documents/ddt/:id",auth,roles("Admin","Dispatcher","Accounting"
 });
 
 app.get("/api/audit",auth,roles("Admin","Accounting"),async(req,res)=>res.json(await q("select * from audit_log order by created_at desc limit 500")));
-app.get("/api/documents/invoice/:id",auth,async(req,res)=>{const i=(await q("select i.*,c.company,c.vat_id,c.address,c.city from invoices i join customers c on c.id=i.customer_id where i.id=$1",[req.params.id]))[0];if(!i)return res.status(404).send("Not found");res.type("html").send(doc("Fattura "+i.invoice_number,`<div class="top"><div style="display:flex;align-items:center;gap:14px"><img src="https://emergency-delivery.emergency-delivery1.blitz.cloud/emergency-delivery-logo.png" alt="Emergency Delivery" style="max-width:150px;max-height:76px;object-fit:contain"><div><b>Emergency Delivery</b><p>Trasporti urgenti · Italia</p></div></div><div class="right">FATTURA<h1>${i.invoice_number}</h1>${i.issue_date.toISOString().slice(0,10)}</div></div><div class="grid"><div class="card"><small>CLIENTE</small><b>${i.company}</b><br>${i.address||""}<br>${i.city||""}<br>${i.vat_id||""}</div><div class="card"><small>PAGAMENTO</small>Scadenza: ${i.due_date?i.due_date.toISOString().slice(0,10):"—"}<br>Stato: ${i.status}</div></div><table><tr><th>Descrizione</th><th>Netto</th></tr><tr><td>${i.description||"Trasporto urgente"}</td><td>€ ${Number(i.net).toFixed(2)}</td></tr></table><p style="text-align:right">Imponibile € ${Number(i.net).toFixed(2)}<br>IVA ${i.vat_rate}% € ${Number(i.vat).toFixed(2)}<br><b style="font-size:20px">Totale € ${Number(i.gross).toFixed(2)}</b></p>`))});
-app.get("/api/documents/delivery-note/:id",auth,async(req,res)=>{const t=(await q("select t.*,c.company,c.address,c.city,u.name as driver_name,v.name as vehicle_name,v.plate as vehicle_plate from trips t join customers c on c.id=t.customer_id left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id where t.id=$1",[req.params.id]))[0];if(!t)return res.status(404).send("Not found");const st=await q("select * from trip_stops where trip_id=$1 order by stop_order",[t.id]);const deliveryAddress=st[0]?.address||String(t.route||"").split(" → ")[1]||"";res.type("html").send(doc("DDT "+t.trip_number,`<div class="top"><div style="display:flex;align-items:center;gap:14px"><img src="https://emergency-delivery.emergency-delivery1.blitz.cloud/emergency-delivery-logo.png" alt="Emergency Delivery" style="max-width:150px;max-height:76px;object-fit:contain"><div><b>Emergency Delivery</b><p>Documento di consegna</p></div></div><div class="right">DDT<h1>${t.trip_number}</h1></div></div><div class="grid"><div class="card"><small>DESTINATARIO</small><b>${t.company}</b><br>${deliveryAddress||"—"}<br>${t.city||""}</div><div class="card"><small>FAHRZEUG / FAHRER</small>${t.vehicle_name||"—"}${t.vehicle_plate?(" · "+t.vehicle_plate):""}<br>Fahrer: ${t.driver_name||"—"}<br>${t.weight_kg} KG · ${t.pieces} pezzi</div></div><table><tr><th>Stop</th><th>Kunde</th><th>Adresse</th></tr>${st.map(s=>`<tr><td>${s.stop_order}</td><td>${s.customer_name||""}</td><td>${s.address}</td></tr>`).join("")}</table>${t.notes?`<div class="card"><small>LIEFERSCHEINBESCHREIBUNG</small>${t.notes}</div>`:""}<div class="sign"><div>Firma mittente</div><div>Firma destinatario${t.signature_data?`<br><img src="${t.signature_data}" style="max-width:100%;height:60px;object-fit:contain;margin-top:8px">`:""}</div></div>`))});
+app.get("/api/documents/invoice/:id",auth,roles("Admin","Accounting"),async(req,res)=>{const i=(await q("select i.*,c.company,c.vat_id,c.address,c.city from invoices i join customers c on c.id=i.customer_id where i.id=$1",[req.params.id]))[0];if(!i)return res.status(404).send("Not found");res.type("html").send(doc("Fattura "+i.invoice_number,`<div class="top"><div style="display:flex;align-items:center;gap:14px"><img src="https://emergency-delivery.emergency-delivery1.blitz.cloud/emergency-delivery-logo.png" alt="Emergency Delivery" style="max-width:150px;max-height:76px;object-fit:contain"><div><b>Emergency Delivery</b><p>Trasporti urgenti · Italia</p></div></div><div class="right">FATTURA<h1>${i.invoice_number}</h1>${i.issue_date.toISOString().slice(0,10)}</div></div><div class="grid"><div class="card"><small>CLIENTE</small><b>${i.company}</b><br>${i.address||""}<br>${i.city||""}<br>${i.vat_id||""}</div><div class="card"><small>PAGAMENTO</small>Scadenza: ${i.due_date?i.due_date.toISOString().slice(0,10):"—"}<br>Stato: ${i.status}</div></div><table><tr><th>Descrizione</th><th>Netto</th></tr><tr><td>${i.description||"Trasporto urgente"}</td><td>€ ${Number(i.net).toFixed(2)}</td></tr></table><p style="text-align:right">Imponibile € ${Number(i.net).toFixed(2)}<br>IVA ${i.vat_rate}% € ${Number(i.vat).toFixed(2)}<br><b style="font-size:20px">Totale € ${Number(i.gross).toFixed(2)}</b></p>`))});
+app.get("/api/documents/delivery-note/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{const t=(await q("select t.*,c.company,c.address,c.city,u.name as driver_name,v.name as vehicle_name,v.plate as vehicle_plate from trips t join customers c on c.id=t.customer_id left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id where t.id=$1",[req.params.id]))[0];if(!t)return res.status(404).send("Not found");const st=await q("select * from trip_stops where trip_id=$1 order by stop_order",[t.id]);const deliveryAddress=st[0]?.address||String(t.route||"").split(" → ")[1]||"";res.type("html").send(doc("DDT "+t.trip_number,`<div class="top"><div style="display:flex;align-items:center;gap:14px"><img src="https://emergency-delivery.emergency-delivery1.blitz.cloud/emergency-delivery-logo.png" alt="Emergency Delivery" style="max-width:150px;max-height:76px;object-fit:contain"><div><b>Emergency Delivery</b><p>Documento di consegna</p></div></div><div class="right">DDT<h1>${t.trip_number}</h1></div></div><div class="grid"><div class="card"><small>DESTINATARIO</small><b>${t.company}</b><br>${deliveryAddress||"—"}<br>${t.city||""}</div><div class="card"><small>FAHRZEUG / FAHRER</small>${t.vehicle_name||"—"}${t.vehicle_plate?(" · "+t.vehicle_plate):""}<br>Fahrer: ${t.driver_name||"—"}<br>${t.weight_kg} KG · ${t.pieces} pezzi</div></div><table><tr><th>Stop</th><th>Kunde</th><th>Adresse</th></tr>${st.map(s=>`<tr><td>${s.stop_order}</td><td>${s.customer_name||""}</td><td>${s.address}</td></tr>`).join("")}</table>${t.notes?`<div class="card"><small>LIEFERSCHEINBESCHREIBUNG</small>${t.notes}</div>`:""}<div class="sign"><div>Firma mittente</div><div>Firma destinatario${t.signature_data?`<br><img src="${t.signature_data}" style="max-width:100%;height:60px;object-fit:contain;margin-top:8px">`:""}</div></div>`))});
 function doc(title,b){return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:14mm}body{font-family:Arial;color:#172033}.sheet{max-width:800px;margin:auto;padding:20px}.top{display:flex;justify-content:space-between;border-bottom:3px solid #172033;padding-bottom:16px}.top b{font-size:28px}.right{text-align:right}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}.card{border:1px solid #ddd;border-radius:8px;padding:14px;margin:12px 0}small{display:block;color:#667085;margin-bottom:6px}table{width:100%;border-collapse:collapse;margin:18px 0}th,td{padding:9px;border-bottom:1px solid #ddd;text-align:left}.sign{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:50px}.sign div{height:80px;border:1px solid #ddd;padding:10px}@media print{.actions{display:none}}</style></head><body><div class="actions" style="text-align:center"><button onclick="print()">Stampa / Salva come PDF</button></div><main class="sheet">${b}</main></body></html>`}
 
 app.get("/api/trips/:id/stops",auth,async(req,res)=>{
@@ -905,7 +905,7 @@ app.post('/api/orders/create-trip', auth, roles('Admin','Dispatcher'), async (re
   } catch(e) { res.status(500).json({error:e.message}); }
 });
 
-app.post('/api/trips/:id/time', auth, roles('Admin','Dispatcher','Driver'), async (req,res) => {
+app.post('/api/trips/:id/time', auth, (req,res,next)=>req.user.role==='Driver'?next():roles('Admin','Dispatcher')(req,res,next), async (req,res) => {
   try {
     const { event_type, stop_id=null, note=null } = req.body;
     const allowed = ['shift_start','arrived','departed','trip_start','trip_end'];
@@ -929,6 +929,9 @@ app.post('/api/trips/:id/time', auth, roles('Admin','Dispatcher','Driver'), asyn
 
 app.get('/api/trips/:id/time', auth, async (req,res) => {
   try {
+    const trip=(await q("select id,driver_id from trips where id=$1",[req.params.id]))[0];
+    if(!trip)return res.status(404).json({error:'Tour nicht gefunden.'});
+    if(req.user.role==='Driver'&&trip.driver_id!==req.user.id)return res.status(403).json({error:'Keine Berechtigung für diese Tour.'});
     const { rows } = await pool.query(`SELECT * FROM driver_time_events WHERE trip_id=$1 ORDER BY event_at`,[req.params.id]);
     res.json(rows);
   } catch(e) { res.status(500).json({error:e.message}); }
@@ -1150,7 +1153,7 @@ app.post("/api/stops/:id/proof",auth,roles("Admin","Dispatcher","Driver"),async(
   }catch(e){res.status(500).json({error:e.message});}
 });
 
-app.get("/api/documents/delivery-note/:id",auth,async(req,res)=>{
+app.get("/api/documents/delivery-note/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   const t=(await q(`select t.*,c.company,c.address,c.city,c.vat_id,d.document_number,d.issued_at
                     from trips t join customers c on c.id=t.customer_id
                     left join delivery_documents d on d.trip_id=t.id
@@ -4364,7 +4367,7 @@ async function v87BuildDdtPdf(t,stops,ddt){
 
 // V181 – direkte PDF-Downloads für DDT und Rechnungen
 function v181Filename(name){return String(name||"dokument").replace(/[^a-zA-Z0-9._-]+/g,"_")}
-app.get("/api/documents/invoice/:id/pdf",auth,async(req,res)=>{
+app.get("/api/documents/invoice/:id/pdf",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
   try{
     const inv=(await q(`select i.*,c.company customer_company,c.vat_id customer_vat,t.trip_number
       from invoices i left join customers c on c.id=i.customer_id left join trips t on t.id=i.trip_id
@@ -4393,6 +4396,7 @@ app.get("/api/documents/ddt/:id/pdf",auth,async(req,res)=>{
       left join users u on u.id=t.driver_id left join vehicles v on v.id=t.vehicle_id
       where t.id=$1`,[req.params.id]))[0];
     if(!t)return res.status(404).json({error:"Auftrag/Tour nicht gefunden"});
+    if(req.user.role==="Driver"&&String(t.driver_id)!==String(req.user.id))return res.status(403).json({error:"Dieser Lieferschein gehört nicht zu deiner zugewiesenen Fahrt."});
     let ddt=(await q("select * from delivery_documents where trip_id=$1",[t.id]))[0];
     if(!ddt){
       const n=await q(`select 'DDT-'||extract(year from current_date)::int||'-'||lpad(
