@@ -64,7 +64,8 @@ function splitSql(sql){
 const CONNECTION_RETRY_DELAYS_MS=[500,1000,2000,4000,8000];
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
-async function queryPostgresWithRetry(text,params){
+function getPostgresPool(){
+  if(!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required for PostgreSQL connections.");
   if(!pgPool){
     const {Pool}=require("pg");
     pgPool=new Pool({
@@ -79,10 +80,15 @@ async function queryPostgresWithRetry(text,params){
       console.error("PostgreSQL idle client error:",err.message);
     });
   }
+  return pgPool;
+}
+
+async function queryPostgresWithRetry(text,params){
+  const activePool=getPostgresPool();
 
   for(let attempt=0;;attempt++){
     try{
-      return await pgPool.query(text,params);
+      return await activePool.query(text,params);
     }catch(err){
       // Retry only failures that prove no PostgreSQL query was executed:
       // ECONNREFUSED, ETIMEDOUT, or pg-pool's connection-acquisition timeout.
@@ -102,6 +108,11 @@ async function queryPostgresWithRetry(text,params){
 }
 
 const pool={
+  async connect(){
+    // Transactional workflows (such as the guarded admin reset) require one
+    // dedicated PostgreSQL client so BEGIN/COMMIT/ROLLBACK stay on one session.
+    return getPostgresPool().connect();
+  },
   async query(text,params=[]){
     // blitz.cloud / online mode: use managed PostgreSQL when DATABASE_URL is present.
     if(process.env.DATABASE_URL){
