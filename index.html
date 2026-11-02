@@ -153,7 +153,7 @@ table{display:block;max-width:100%;overflow-x:auto}
 @media (max-width:820px){
   .ed-mobile-nav{
     position:fixed;left:8px;right:8px;bottom:8px;z-index:120;
-    display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;
+    display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:3px;
     padding:7px;background:rgba(17,17,17,.96);border-radius:18px;
     box-shadow:0 10px 35px rgba(0,0,0,.35)
   }
@@ -490,7 +490,7 @@ if(p==="company"){
   <label>BIC<input id="coBic" value="${esc(x.bic||"")}"></label>
   </div><label style="display:block;margin-top:14px">Fußzeile / Zusatztext<input id="coFooter" value="${esc(x.footer_note||"")}"></label>
   <div class="modal-actions" style="margin-top:18px"><button class="btn primary" onclick="saveCompanySettings()">Firmendaten speichern</button></div></div>
-  <div class="panel"><h3>Testdaten-Reset – Datenbankprüfung</h3><p class="muted">Liest Tabellen, Datensatzanzahlen und Fremdschlüssel der Live-Datenbank. Es werden keine Daten verändert.</p><button class="btn secondary" type="button" onclick="loadResetPreflight()">Datenbank sicher prüfen</button><div id="resetPreflightResult" style="margin-top:12px"></div></div><div class="panel"><h3>PDF-Verwendung</h3><p class="muted">Logo, Firmenname, Adresse, Kontakt- und Zahlungsdaten werden automatisch in die PDF-Dokumente übernommen. Änderungen gelten für neu erzeugte PDFs.</p></div>`;
+  <div class="panel" id="resetPreflightPanel"><h3>Testdaten-Reset – Datenbankprüfung</h3><p class="muted">Liest Tabellen, Datensatzanzahlen und Fremdschlüssel der Live-Datenbank. Es werden keine Daten verändert.</p><button class="btn secondary" type="button" onclick="loadResetPreflight()">Datenbank sicher prüfen</button><div id="resetPreflightResult" style="margin-top:12px"></div></div><div class="panel"><h3>PDF-Verwendung</h3><p class="muted">Logo, Firmenname, Adresse, Kontakt- und Zahlungsdaten werden automatisch in die PDF-Dokumente übernommen. Änderungen gelten für neu erzeugte PDFs.</p></div>`;
 }
 if(contentPage==="dispatch")c.innerHTML=`<div class="page-head"><div><div class="eyebrow">AUFTRAG+</div><h2>Auftrag+</h2><p class="muted">Aufträge anlegen, disponieren, Touren planen und Stopps gemeinsam verwalten.</p></div></div><div class="panel"><div class="page-head"><div><h3>Disposition & Aufträge</h3><p class="muted">Offene Aufträge schnell finden und Fahrer direkt zuweisen.</p></div><div class="row"><button type="button" class="stat" style="padding:8px 12px;cursor:pointer" onclick="showUnassignedDispatch()">Ohne Fahrer: <b id="dispatchUnassignedCount" style="display:inline;font-size:16px">0</b></button></div></div><div class="form form-2" style="margin-bottom:14px"><label>Auftrag suchen<input id="dispatchSearch" placeholder="Auftragsnummer, Route oder Status" oninput="renderDispatchAssignmentList()"></label><label>Zuweisung filtern<select id="dispatchAssignmentFilter" onchange="renderDispatchAssignmentList()"><option value="active" selected>Aktive Aufträge</option><option value="all">Alle Aufträge</option><option value="unassigned">Nur ohne Fahrer</option><option value="assigned">Nur mit Fahrer</option></select></label></div><div id="dispatchList"></div></div><div class="panel"><h3>Neuen Auftrag erstellen</h3><p class="muted">Start- und Zieladresse eingeben und die Route direkt in Google Maps prüfen.</p><div class="form"><select id="tc">${S.customers.map(x=>`<option value="${x.id}">${x.company}</option>`)}</select><input id="w" type="number" placeholder="KG"><label>Startadresse<input id="rtStart" placeholder="Straße, PLZ, Ort" autocomplete="street-address"></label><label>Zieladresse<input id="rtEnd" placeholder="Straße, PLZ, Ort" autocomplete="street-address"></label><label>Fahrer (optional)<select id="dr"><option value="">Später zuweisen</option>${S.users.filter(x=>x.role==="Driver").map(x=>`<option value="${x.id}">${x.name}</option>`).join("")}</select></label><select id="ve">${S.vehicles.map(x=>`<option value="${x.id}">${x.name}</option>`).join("")}</select><input id="pc" type="number" value="1"><input id="price" type="number" placeholder="Netto Preis EUR"><input id="nt" placeholder="Notiz"></div><div class="row" style="margin-top:12px"><button class="btn secondary" onclick="openNewOrderRoute()">Route in Google Maps planen</button><button class="btn" onclick="trip()">Auftrag erstellen</button></div></div><div class="panel"><h3>Tour erstellen</h3><p class="muted">Mehrere Aufträge zu einer echten Tour mit Fahrer, Fahrzeug und Stoppreihenfolge zusammenfassen.</p><div class="form"><input id="tourname" placeholder="Tourname"><input id="tourdate" type="date"><input id="tourorg" value="Milano" placeholder="Start"><input id="tourdstr" value="Milano" placeholder="Ziel"><input id="tourkm" type="number" min="0" step="1" placeholder="Geplante Kilometer (km)"><select id="tourdriver"><option value="">Fahrer wählen</option>${S.users.filter(x=>x.role==="Driver").map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join("")}</select><select id="tourvehicle"><option value="">Fahrzeug wählen</option>${S.vehicles.map(x=>`<option value="${x.id}">${esc(x.name)} · ${esc(x.plate||"")}</option>`).join("")}</select><select id="tourtrips" multiple size="6">${S.trips.map(t=>`<option value="${t.id}">${esc(t.trip_number)} · ${esc(t.route||"")} · ${Number(t.weight_kg||0)} KG</option>`).join("")}</select></div><br><button class="btn primary" onclick="createTour()">Tour erstellen</button><div id="tourout"></div></div><div class="panel"><h3>Tour optimieren</h3><div class="form"><input id="org" placeholder="Startadresse (Straße, PLZ, Ort)"><input id="dst" placeholder="Zieladresse (Straße, PLZ, Ort)"><select id="tripsel" multiple size="4">${S.trips.map(t=>`<option value="${t.id}">${t.trip_number} · ${t.route||""}</option>`).join("")}</select></div><br><button class="btn" onclick="opt()">Stopps nach Ort sortieren + Google Maps</button><div id="optout"></div></div>`;
 if(contentPage==="dispatch")renderDispatchAssignmentList();
@@ -1166,10 +1166,14 @@ if ("serviceWorker" in navigator) {
       "Lieferscheine":"documents",
       "Rechnungen":"invoices",
       "Fahrer-App":"driver",
-      "Mein Konto":"account"
+      "Mein Konto":"account",
+      "Datenbank prüfen":"company"
     };
     const page=routes[label];
-    if(page && typeof window.view==="function") window.view(page);
+    if(page && typeof window.view==="function") {
+      window.view(page);
+      if(label==="Datenbank prüfen") setTimeout(()=>document.getElementById("resetPreflightPanel")?.scrollIntoView({behavior:"smooth",block:"start"}),300);
+    }
   }
   function addNav(){
     if(document.getElementById("edMobileNav")) return;
@@ -1181,7 +1185,8 @@ if ("serviceWorker" in navigator) {
       '<button data-go="Dashboard">⌂<br>Start</button>'+
       (isDriver?'<button data-go="Fahrer-App">🚚<br>Fahrten</button>':'<button data-go="Auftrag+">▣<br>Auftrag+</button>')+
       (isDriver?'<button data-go="Kalender">□<br>Kalender</button>':'<button data-go="Lieferscheine">▤<br>Liefers.</button>'+'<button data-go="Rechnungen">€<br>Rechn.</button>')+
-      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button>'+'<button data-go="Kalender">□<br>Kalender</button>'+'<button data-go="Mein Konto">●<br>Konto</button>');
+      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button>'+'<button data-go="Kalender">□<br>Kalender</button>'+'<button data-go="Mein Konto">●<br>Konto</button>')+
+      (!isDriver && String(window.S?.user?.role||"").toLowerCase()==="admin"?'<button data-go="Datenbank prüfen">⚙<br>Prüfen</button>':"");
     n.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
     document.body.appendChild(n);
   }
