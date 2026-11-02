@@ -344,13 +344,20 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
     const tables=await q(`SELECT table_name FROM information_schema.tables
       WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`);
     const foreignKeys=await q(`SELECT child.relname AS child_table,parent.relname AS referenced_table,
-      con.conname AS constraint_name,pg_get_constraintdef(con.oid) AS definition
+      con.conname AS constraint_name,pg_get_constraintdef(con.oid) AS definition,
+      CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT'
+        WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' END AS on_delete
       FROM pg_constraint con
       JOIN pg_class child ON child.oid=con.conrelid
       JOIN pg_namespace ns ON ns.oid=child.relnamespace
       JOIN pg_class parent ON parent.oid=con.confrelid
       WHERE con.contype='f' AND ns.nspname='public'
       ORDER BY parent.relname,child.relname,con.conname`);
+    const columns=await q(`SELECT table_name,column_name,data_type,is_nullable,column_default,
+      ordinal_position
+      FROM information_schema.columns
+      WHERE table_schema='public'
+      ORDER BY table_name,ordinal_position`);
     const counts=[];
     for(const row of tables){
       const name=String(row.table_name||"");
@@ -359,7 +366,7 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
       counts.push({table_name:name,row_count:String(result[0]?.row_count??"0")});
     }
     res.setHeader("Cache-Control","no-store");
-    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,foreign_keys:foreignKeys});
+    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,columns,foreign_keys:foreignKeys});
   }catch(e){
     console.error("Admin reset preflight failed:",e.message);
     res.status(500).json({error:"Datenbank-Vorabprüfung fehlgeschlagen"});
