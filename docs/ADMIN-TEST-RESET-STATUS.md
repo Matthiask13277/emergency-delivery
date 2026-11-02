@@ -46,3 +46,12 @@ Die Screenshots liefern die Live-Struktur und wichtige Beispiele, aber nicht all
 
 ## Sicherheitsgrenze
 Kein automatischer Reset auf Basis bloßer Tabellennamen, keine `TRUNCATE ... CASCADE`-Anweisung, kein Löschen von `users`, `company_settings`, Fahrzeugkonfiguration oder `audit_log`. Mitarbeiterdaten, Rollen, Berechtigungen, Passwort-Hashes, Fahrzeuge und deren Dokumente/Wartungspläne bleiben geschützt. Der Reset darf erst freigegeben werden, wenn Tests nachweisen, dass Mitarbeiter- und Konfigurationsdaten erhalten bleiben.
+
+
+## Ein-Klick-Export für mobile Nutzung
+
+Die Admin-Oberfläche enthält bereits die Schaltfläche **„Prüfergebnisse exportieren“**. Die zugehörige API wurde erweitert und liefert jetzt zusätzlich zum Tabelleninventar, den Datensatzanzahlen und Fremdschlüsseln auch sämtliche Spaltenmetadaten aus `information_schema.columns` (Tabellenname, Spaltenname, Datentyp, NULL-Zulässigkeit, Default und Position). Damit enthält die JSON-Datei den vollständigen strukturellen Prüfbericht. Der Export ist rein lesend und verändert keine Daten.
+
+Ablauf am Handy: **„Datenbank sicher prüfen“** antippen, danach **„Prüfergebnisse exportieren“** antippen und die heruntergeladene Datei hier im Chat anhängen. Die Oberfläche muss dafür nicht durch alle Tabellen gescrollt werden.
+
+Hinweis: Der neue API-Stand liegt im Entwicklungsbranch/PR und wird erst nach dem vorgesehenen Blitz-Push in der Live-App wirksam. Vorherige Live-Versionen liefern den bisherigen Bericht.
