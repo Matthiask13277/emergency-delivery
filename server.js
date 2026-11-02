@@ -355,6 +355,9 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
       FROM information_schema.columns
       WHERE table_schema='public'
       ORDER BY table_name,ordinal_position`);
+    const columns=await q(`SELECT table_name,column_name,data_type,is_nullable,column_default
+      FROM information_schema.columns WHERE table_schema='public'
+      ORDER BY table_name,ordinal_position`);
     const counts=[];
     for(const row of tables){
       const name=String(row.table_name||"");
