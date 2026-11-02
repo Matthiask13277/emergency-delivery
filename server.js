@@ -431,7 +431,8 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
     }
     res.setHeader("Cache-Control","no-store");
     res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,columns,foreign_keys:foreignKeys,
-      notification_sources:notificationSources,event_sources:eventSources,event_key_prefixes:eventKeyPrefixes,\n      relationship_preview:relationshipPreview,notification_matches:notificationMatches});
+      notification_sources:notificationSources,event_sources:eventSources,event_key_prefixes:eventKeyPrefixes,
+      relationship_preview:relationshipPreview,notification_matches:notificationMatches});
   }catch(e){
     console.error("Admin reset preflight failed:",e.message);
     res.status(500).json({error:"Datenbank-Vorabprüfung fehlgeschlagen"});
