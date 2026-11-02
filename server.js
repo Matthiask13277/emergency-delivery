@@ -337,6 +337,36 @@ function hasPermission(user,key){if(user.role==='Admin')return true;const custom
 const roles=(...rs)=>(req,res,next)=>{if(!rs.includes(req.user.role))return res.status(403).json({error:"Not permitted"});const hit=PERM_PATHS.find(([re])=>re.test(req.path));if(hit&&!hasPermission(req.user,hit[1]))return res.status(403).json({error:"Berechtigung fehlt: "+hit[1]});next()};
 async function audit(req,action,details){await q("INSERT INTO audit_log(user_id,user_name,role,action,details) VALUES($1,$2,$3,$4,$5)",[req.user.id,req.user.name,req.user.role,action,String(details)])}
 
+// Read-only inventory used to validate a future test-data reset against the live schema.
+// This endpoint never changes rows and is restricted to authenticated Admin users.
+app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
+  try{
+    const tables=await q(`SELECT table_name FROM information_schema.tables
+      WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`);
+    const foreignKeys=await q(`SELECT child.relname AS child_table,parent.relname AS referenced_table,
+      con.conname AS constraint_name,pg_get_constraintdef(con.oid) AS definition
+      FROM pg_constraint con
+      JOIN pg_class child ON child.oid=con.conrelid
+      JOIN pg_namespace ns ON ns.oid=child.relnamespace
+      JOIN pg_class parent ON parent.oid=con.confrelid
+      WHERE con.contype='f' AND ns.nspname='public'
+      ORDER BY parent.relname,child.relname,con.conname`);
+    const counts=[];
+    for(const row of tables){
+      const name=String(row.table_name||"");
+      if(!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name))continue;
+      const result=await q('SELECT COUNT(*)::bigint AS row_count FROM public."'+name+'"');
+      counts.push({table_name:name,row_count:String(result[0]?.row_count??"0")});
+    }
+    res.setHeader("Cache-Control","no-store");
+    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,foreign_keys:foreignKeys});
+  }catch(e){
+    console.error("Admin reset preflight failed:",e.message);
+    res.status(500).json({error:"Datenbank-Vorabprüfung fehlgeschlagen"});
+  }
+});
+
+
 // V176 Mitarbeiterakte
 app.get("/api/employees", auth, roles("Admin","Dispatcher","Accounting"), async (req,res)=>{
   try{res.json(await q(`SELECT u.id,u.username,u.name,u.role,u.phone,u.email,u.address,u.postal_code,u.city,u.license_class,u.entry_date,u.active,u.assigned_vehicle_id,u.permissions,v.name AS vehicle_name,v.plate AS vehicle_plate FROM users u LEFT JOIN vehicles v ON v.id=u.assigned_vehicle_id ORDER BY u.name ASC`))}
