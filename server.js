@@ -493,7 +493,7 @@ app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(r
     if(tripIds.length||orderIds.length){
       const n=await client.query(`DELETE FROM notification_inbox
         WHERE (source='trip' AND source_id=ANY($1::uuid[]))
-           OR (source='order' AND source_id=ANY($2::uuid[])`,[tripIds,orderIds]);
+           OR (source='order' AND source_id=ANY($2::uuid[]))`,[tripIds,orderIds]);
       counts.notifications=n.rowCount||0;
     }
     // notification_event_links in the inspected live schema are all source='live';
