@@ -344,7 +344,10 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
     const tables=await q(`SELECT table_name FROM information_schema.tables
       WHERE table_schema='public' AND table_type='BASE TABLE' ORDER BY table_name`);
     const foreignKeys=await q(`SELECT child.relname AS child_table,parent.relname AS referenced_table,
-      con.conname AS constraint_name,pg_get_constraintdef(con.oid) AS definition
+      con.conname AS constraint_name,pg_get_constraintdef(con.oid) AS definition,
+      CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT'
+        WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT'
+        ELSE 'UNKNOWN' END AS on_delete
       FROM pg_constraint con
       JOIN pg_class child ON child.oid=con.conrelid
       JOIN pg_namespace ns ON ns.oid=child.relnamespace
@@ -354,9 +357,6 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
     const columns=await q(`SELECT table_name,column_name,data_type,is_nullable,column_default,ordinal_position
       FROM information_schema.columns
       WHERE table_schema='public'
-      ORDER BY table_name,ordinal_position`);
-    const columns=await q(`SELECT table_name,column_name,data_type,is_nullable,column_default
-      FROM information_schema.columns WHERE table_schema='public'
       ORDER BY table_name,ordinal_position`);
     const counts=[];
     for(const row of tables){
