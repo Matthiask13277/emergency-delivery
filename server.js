@@ -471,8 +471,9 @@ app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(r
   if(password.length<1||password.length>200)return res.status(400).json({error:"Aktuelles Admin-Passwort ist erforderlich."});
   if(req.headers.origin && req.headers.host && new URL(req.headers.origin).host!==req.headers.host)
     return res.status(403).json({error:"Ungültiger Request-Origin."});
-  const client=await pool.connect();
+  let client=null;
   try{
+    client=await pool.connect();
     await client.query("BEGIN");
     const admin=(await client.query("SELECT password_hash,role,active FROM users WHERE id=$1 FOR UPDATE",[req.user.id])).rows[0];
     if(!admin||admin.role!=="Admin"||admin.active===false||!(await bcrypt.compare(password,admin.password_hash))){
@@ -508,10 +509,10 @@ app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(r
     await client.query("COMMIT");
     res.json({ok:true,deleted:counts,protected:["users","company_settings","vehicles","audit_log history","delay_escalation_rules","calendar_events","push_subscriptions","notification_event_links","live notifications"]});
   }catch(e){
-    try{await client.query("ROLLBACK");}catch(_){}
+    if(client){try{await client.query("ROLLBACK");}catch(_){}}
     console.error("Admin test-data reset failed:",e.message);
     res.status(500).json({error:"Reset fehlgeschlagen. Alle Änderungen wurden zurückgerollt."});
-  }finally{client.release();}
+  }finally{if(client)client.release();}
 });
 
 // V176 Mitarbeiterakte
