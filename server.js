@@ -358,6 +358,16 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
       FROM information_schema.columns
       WHERE table_schema='public'
       ORDER BY table_name,ordinal_position`);
+    // Read-only breakdowns make it possible to distinguish trip/order test
+    // notifications from employee, vehicle, and company notifications before
+    // any future cleanup. source_id is intentionally not treated as an FK.
+    const notificationSources=await q(`SELECT source,COUNT(*)::bigint AS row_count
+      FROM notification_inbox GROUP BY source ORDER BY source`);
+    const eventSources=await q(`SELECT source,COUNT(*)::bigint AS row_count
+      FROM notification_event_links GROUP BY source ORDER BY source`);
+    const eventKeyPrefixes=await q(`SELECT split_part(event_key,':',1) AS key_prefix,
+      COUNT(*)::bigint AS row_count FROM notification_event_links
+      GROUP BY split_part(event_key,':',1) ORDER BY key_prefix`);
     const counts=[];
     for(const row of tables){
       const name=String(row.table_name||"");
@@ -366,7 +376,8 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
       counts.push({table_name:name,row_count:String(result[0]?.row_count??"0")});
     }
     res.setHeader("Cache-Control","no-store");
-    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,columns,foreign_keys:foreignKeys});
+    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,columns,foreign_keys:foreignKeys,
+      notification_sources:notificationSources,event_sources:eventSources,event_key_prefixes:eventKeyPrefixes});
   }catch(e){
     console.error("Admin reset preflight failed:",e.message);
     res.status(500).json({error:"Datenbank-Vorabprüfung fehlgeschlagen"});
