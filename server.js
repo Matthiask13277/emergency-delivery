@@ -440,6 +440,80 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
 });
 
 
+// Admin-only, explicitly scoped test-data reset. No TRUNCATE/CASCADE-wide operations.
+const resetAttempts=new Map();
+function resetRateLimit(req,res,next){
+  const key=String(req.ip||req.socket?.remoteAddress||"unknown");
+  const now=Date.now(),v=resetAttempts.get(key);
+  if(v&&v.until>now&&v.count>=5){res.set("Retry-After",String(Math.ceil((v.until-now)/1000)));return res.status(429).json({error:"Zu viele Reset-Versuche. Bitte später erneut versuchen."});}
+  if(!v||v.until<=now)resetAttempts.set(key,{count:1,until:now+15*60*1000});else v.count++;
+  next();
+}
+const RESET_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+app.get("/api/admin/reset-candidates",auth,roles("Admin"),async(req,res)=>{
+  try{
+    const rows=await q(`SELECT c.id,c.company,c.customer_number,
+      (SELECT count(*) FROM orders o WHERE o.customer_id=c.id) AS order_count,
+      (SELECT count(*) FROM trips t WHERE t.customer_id=c.id) AS trip_count,
+      (SELECT count(*) FROM transport_requests r WHERE r.customer_id=c.id) AS request_count,
+      (SELECT count(*) FROM invoices i WHERE i.customer_id=c.id) AS invoice_count
+      FROM customers c ORDER BY c.company,c.id`);
+    res.set("Cache-Control","no-store");
+    res.json({read_only:true,confirmation:"RESET TESTDATEN",customers:rows,
+      protected:["users","company_settings","vehicles","audit_log","delay_escalation_rules","calendar_events","push_subscriptions","notification_event_links","live notification_inbox rows"]});
+  }catch(e){console.error("Reset candidate preview failed:",e.message);res.status(500).json({error:"Reset-Vorschau fehlgeschlagen"});}
+});
+app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(req,res)=>{
+  const ids=req.body?.customer_ids, password=String(req.body?.password||""), confirmation=String(req.body?.confirmation||"");
+  if(!Array.isArray(ids)||ids.length<1||ids.length>50||ids.some(id=>typeof id!=="string"||!RESET_UUID.test(id))||new Set(ids).size!==ids.length)
+    return res.status(400).json({error:"Bitte eine gültige Auswahl von 1 bis 50 Kunden übermitteln."});
+  if(confirmation!=="RESET TESTDATEN")return res.status(400).json({error:"Bestätigungstext stimmt nicht."});
+  if(password.length<1||password.length>200)return res.status(400).json({error:"Aktuelles Admin-Passwort ist erforderlich."});
+  if(req.headers.origin && req.headers.host && new URL(req.headers.origin).host!==req.headers.host)
+    return res.status(403).json({error:"Ungültiger Request-Origin."});
+  const client=await pool.connect();
+  try{
+    await client.query("BEGIN");
+    const admin=(await client.query("SELECT password_hash,role,active FROM users WHERE id=$1 FOR UPDATE",[req.user.id])).rows[0];
+    if(!admin||admin.role!=="Admin"||admin.active===false||!(await bcrypt.compare(password,admin.password_hash))){
+      await client.query("ROLLBACK");return res.status(403).json({error:"Admin-Passwort oder Berechtigung ist ungültig."});
+    }
+    const customers=(await client.query("SELECT id,company FROM customers WHERE id=ANY($1::uuid[]) FOR UPDATE",[ids])).rows;
+    if(customers.length!==ids.length){await client.query("ROLLBACK");return res.status(409).json({error:"Die Kundenauswahl hat sich geändert. Bitte Vorschau neu laden."});}
+    const tripRows=(await client.query("SELECT id FROM trips WHERE customer_id=ANY($1::uuid[]) FOR UPDATE",[ids])).rows;
+    const orderRows=(await client.query("SELECT id FROM orders WHERE customer_id=ANY($1::uuid[]) FOR UPDATE",[ids])).rows;
+    const requestRows=(await client.query("SELECT id FROM transport_requests WHERE customer_id=ANY($1::uuid[]) FOR UPDATE",[ids])).rows;
+    const tripIds=tripRows.map(x=>x.id),orderIds=orderRows.map(x=>x.id),requestIds=requestRows.map(x=>x.id);
+    const invoices=(await client.query(`SELECT count(*)::int AS n FROM invoices
+      WHERE customer_id=ANY($1::uuid[]) OR trip_id=ANY($2::uuid[])`,[ids,tripIds])).rows[0].n;
+    if(invoices){await client.query("ROLLBACK");return res.status(409).json({error:"Reset abgebrochen: Zugeordnete Rechnungen gefunden. Diese müssen separat geprüft werden.",invoice_count:invoices});}
+    const counts={customers:customers.length,orders:orderIds.length,trips:tripIds.length,transport_requests:requestIds.length,
+      notifications:0,event_links:0};
+    // Only notifications explicitly tied to selected order/trip IDs are removed.
+    if(tripIds.length||orderIds.length){
+      const n=await client.query(`DELETE FROM notification_inbox
+        WHERE (source='trip' AND source_id=ANY($1::uuid[]))
+           OR (source='order' AND source_id=ANY($2::uuid[]))`,[tripIds,orderIds]);
+      counts.notifications=n.rowCount||0;
+    }
+    // notification_event_links in the inspected live schema are all source='live';
+    // preserve them. Never infer test status from an event-key prefix.
+    if(requestIds.length) await client.query("DELETE FROM transport_requests WHERE id=ANY($1::uuid[])",[requestIds]);
+    if(orderIds.length) await client.query("DELETE FROM orders WHERE id=ANY($1::uuid[])",[orderIds]);
+    if(tripIds.length) await client.query("DELETE FROM trips WHERE id=ANY($1::uuid[])",[tripIds]);
+    await client.query("DELETE FROM customers WHERE id=ANY($1::uuid[])",[ids]);
+    await client.query(`INSERT INTO audit_log(user_id,user_name,role,action,details)
+      VALUES($1,$2,'Admin','TEST_DATA_RESET',$3)`,
+      [req.user.id,req.user.name,JSON.stringify({...counts,customer_ids:ids,protected_live_notifications:true})]);
+    await client.query("COMMIT");
+    res.json({ok:true,deleted:counts,protected:["users","company_settings","vehicles","audit_log history","delay_escalation_rules","calendar_events","push_subscriptions","notification_event_links","live notifications"]});
+  }catch(e){
+    try{await client.query("ROLLBACK");}catch(_){}
+    console.error("Admin test-data reset failed:",e.message);
+    res.status(500).json({error:"Reset fehlgeschlagen. Alle Änderungen wurden zurückgerollt."});
+  }finally{client.release();}
+});
+
 // V176 Mitarbeiterakte
 app.get("/api/employees", auth, roles("Admin","Dispatcher","Accounting"), async (req,res)=>{
   try{res.json(await q(`SELECT u.id,u.username,u.name,u.role,u.phone,u.email,u.address,u.postal_code,u.city,u.license_class,u.entry_date,u.active,u.assigned_vehicle_id,u.permissions,v.name AS vehicle_name,v.plate AS vehicle_plate FROM users u LEFT JOIN vehicles v ON v.id=u.assigned_vehicle_id ORDER BY u.name ASC`))}

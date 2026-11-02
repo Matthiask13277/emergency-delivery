@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Emergency Delivery – Testdaten zurücksetzen</title>
+<style>
+body{font:16px system-ui,sans-serif;background:#f4f6f8;color:#17202a;margin:0;padding:24px}main{max-width:850px;margin:auto;background:white;padding:24px;border-radius:14px;box-shadow:0 2px 14px #0001}h1{font-size:1.5rem}p{line-height:1.5}.warn{background:#fff4df;padding:12px;border-radius:8px}.row{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}.row>*{flex:1;min-width:180px}input,button{font:inherit;padding:10px;border:1px solid #9aa4af;border-radius:7px}button{background:#173b63;color:white;cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}table{width:100%;border-collapse:collapse;margin:16px 0}td,th{text-align:left;padding:9px;border-bottom:1px solid #ddd}.status{white-space:pre-wrap;padding:12px;background:#eef2f5;border-radius:8px}.danger{background:#9b2424}small{color:#566}
+</style></head><body><main>
+<h1>Testdaten zurücksetzen</h1>
+<p class="warn"><strong>Achtung:</strong> Diese Funktion löscht ausschließlich die ausgewählten Kunden sowie deren zugehörige Aufträge, Fahrten und Transportanfragen. Zugeordnete Rechnungen blockieren den Reset. Benutzer, Passwörter, Fahrzeuge, Firmeneinstellungen, Audit-Historie, Kalender, Push-Abonnements und Live-Benachrichtigungen bleiben erhalten.</p>
+<section id="login">
+<h2>Admin-Anmeldung</h2><div class="row"><input id="username" autocomplete="username" placeholder="Admin-Benutzername"><input id="loginpass" type="password" autocomplete="current-password" placeholder="Admin-Passwort"></div>
+<button id="loginbtn">Anmelden und Vorschau laden</button>
+</section>
+<section id="work" hidden>
+<h2>1. Kunden für den Reset auswählen</h2><p>Bitte nur Datensätze auswählen, die tatsächlich Testdaten sind. Die Auswahl wird vor dem Löschen nochmals geprüft.</p>
+<div id="candidates"></div>
+<h2>2. Löschung bestätigen</h2><div class="row"><input id="confirm" placeholder="RESET TESTDATEN"><input id="resetpass" type="password" autocomplete="current-password" placeholder="Aktuelles Admin-Passwort erneut eingeben"></div>
+<button class="danger" id="resetbtn" disabled>Ausgewählte Testdaten endgültig löschen</button>
+</section><p id="status" class="status" role="status">Noch nicht angemeldet.</p>
+</main><script>
+let token="",customers=[];
+const $=id=>document.getElementById(id);
+function status(s){$("status").textContent=s}
+async function api(url,opts={}){const r=await fetch(url,{...opts,headers:{"Content-Type":"application/json","Authorization":"Bearer "+token,...(opts.headers||{})}});const j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||"HTTP "+r.status);return j}
+async function load(){
+ const d=await api("/api/admin/reset-candidates");customers=d.customers||[];
+ $("candidates").innerHTML="";
+ if(!customers.length){$("candidates").textContent="Keine Kunden vorhanden.";return}
+ const table=document.createElement("table");table.innerHTML="<thead><tr><th>Auswahl</th><th>Kunde</th><th>Aufträge</th><th>Fahrten</th><th>Transportanfragen</th><th>Rechnungen</th></tr></thead>";
+ const body=document.createElement("tbody");
+ for(const c of customers){const tr=document.createElement("tr"),td=document.createElement("td"),cb=document.createElement("input");cb.type="checkbox";cb.value=c.id;cb.addEventListener("change",validate);td.append(cb);tr.append(td);
+ for(const v of [c.company,c.order_count,c.trip_count,c.request_count,c.invoice_count]){const x=document.createElement("td");x.textContent=v??"–";tr.append(x)}body.append(tr)}
+ table.append(body);$("candidates").append(table);
+ const note=document.createElement("small");note.textContent="Kunden mit Rechnungen werden serverseitig nicht gelöscht; der gesamte Reset wird dann abgebrochen."; $("candidates").append(note);
+}
+function validate(){$("resetbtn").disabled=!($("candidates").querySelectorAll("input:checked").length&&$("confirm").value==="RESET TESTDATEN"&&$("resetpass").value.length>0)}
+$("confirm").addEventListener("input",validate);$("resetpass").addEventListener("input",validate);
+$("loginbtn").onclick=async()=>{try{const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:$("username").value,password:$("loginpass").value})});const d=await r.json();if(!r.ok)throw Error(d.error||"Anmeldung fehlgeschlagen");if(d.user?.role!=="Admin")throw Error("Nur Admins dürfen den Reset ausführen.");token=d.token;await load();$("login").hidden=true;$("work").hidden=false;status("Angemeldet. Vorschau ist nur lesend; es wurde nichts gelöscht.");}catch(e){status(e.message)}};
+$("resetbtn").onclick=async()=>{const ids=[...$("candidates").querySelectorAll("input:checked")].map(x=>x.value);if(!window.confirm("Wirklich "+ids.length+" ausgewählte Kunden samt zugehörigen Test-Aufträgen/Fahrten löschen?"))return;
+ $("resetbtn").disabled=true;try{const r=await api("/api/admin/reset-test-data",{method:"POST",body:JSON.stringify({customer_ids:ids,password:$("resetpass").value,confirmation:$("confirm").value})});status("Reset erfolgreich.\n"+JSON.stringify(r.deleted,null,2)+"\nGeschützte Live- und Stammdaten wurden beibehalten.");await load();$("confirm").value="";$("resetpass").value="";}catch(e){status("Reset nicht ausgeführt: "+e.message)}finally{validate()}};
+</script></body></html>
