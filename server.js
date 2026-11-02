@@ -351,6 +351,10 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
       JOIN pg_class parent ON parent.oid=con.confrelid
       WHERE con.contype='f' AND ns.nspname='public'
       ORDER BY parent.relname,child.relname,con.conname`);
+    const columns=await q(`SELECT table_name,column_name,data_type,is_nullable,column_default,ordinal_position
+      FROM information_schema.columns
+      WHERE table_schema='public'
+      ORDER BY table_name,ordinal_position`);
     const counts=[];
     for(const row of tables){
       const name=String(row.table_name||"");
@@ -359,7 +363,7 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
       counts.push({table_name:name,row_count:String(result[0]?.row_count??"0")});
     }
     res.setHeader("Cache-Control","no-store");
-    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,foreign_keys:foreignKeys});
+    res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,foreign_keys:foreignKeys,columns});
   }catch(e){
     console.error("Admin reset preflight failed:",e.message);
     res.status(500).json({error:"Datenbank-Vorabprüfung fehlgeschlagen"});
