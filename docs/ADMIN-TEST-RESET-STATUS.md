@@ -1,21 +1,32 @@
 # Admin-Testdaten-Reset: Implementierungsstatus
 
-Dieses Dokument ist der aktuelle Arbeitsstand für die sichere Reset-Funktion.
+Stand: 2026-11-02
 
-## Erledigt
-- Separater Branch `admin-test-data-reset`
-- Sicherheits- und Freigabeanforderungen dokumentiert
-- Keine Änderung an `main` oder an der Live-Datenbank
+## Im Hauptbranch vorhanden
+- Die Reset-Funktion wurde mit PR #103 in `main` gemergt.
+- Commit: `ca20ecd81e92cc7e012cbd0ae4354361caa73600`
+- Admin-only Vorschau und Reset-Endpunkt mit erneuter Passwortprüfung, Bestätigungsphrase, Transaktion/Rollback, Rechnungs-Sperre und Audit-Eintrag.
+- Die fachliche Freigabe des App-Eigentümers umfasst alle Kunden, Kundenadressen und zugehörigen Testdokumente als Testdaten.
+- Die zugehörige isolierte Backup-Test-Checkliste liegt unter `docs/RESET-BACKUP-TEST-CHECKLIST.md`.
 
-## Warum die Löschfunktion noch nicht implementiert ist
-Der Quellcode enthält nicht notwendigerweise alle Tabellen, die in der gehosteten Datenbank vorhanden sind. Die Datenbank-UI bietet laut Screenshot nur lesende `SELECT`-Abfragen. Ohne das tatsächliche Live-Schema einschließlich aller Fremdschlüssel kann eine Löschliste nicht zuverlässig bestimmen, welche Finanz-/Auftragsdaten zu löschen sind und welche Mitarbeiter-/Fahrzeugdaten erhalten bleiben müssen.
+## Geschützte Daten
+Der Reset ist auf explizit ausgewählte Kunden begrenzt. Benutzer und Zugangsdaten, Firmenkonfiguration, Fahrzeuge, Verzögerungsregeln, Kalendertermine, Push-Abonnements, bestehende Audit-Historie, Live-Benachrichtigungen und sämtliche `notification_event_links` müssen erhalten bleiben. Rechnungsbeziehungen blockieren den Reset. Kein `TRUNCATE ... CASCADE`.
 
-## Nächster sicherer technischer Schritt
-1. Auf der Live-Datenbank die SQL-Datei `scripts/reset-test-data-preflight.sql` ausführen und die Ergebnisse sichern.
-2. Das komplette Tabelleninventar und alle Fremdschlüssel auswerten.
-3. Eine explizite Allowlist zu löschender Tabellen und eine Blocklist zu schützender Tabellen erstellen.
-4. Den Reset ausschließlich in einer wiederhergestellten Backup-Kopie implementieren und testen.
-5. Erst danach die Admin-UI und serverseitige POST-Route mit bcrypt-Passwortprüfung, Admin-Rollenprüfung, Bestätigungstext, Transaktion, Rollback und Audit-Eintrag hinzufügen.
+## Noch NICHT nachgewiesen
+- Es liegt kein dokumentierter erfolgreicher Restore eines aktuellen Backups in eine isolierte Testdatenbank vor.
+- Die vollständige Backup-Test-Checkliste ist nicht als bestanden protokolliert.
+- Ein Deployment der neuen Version auf dem Hosting ist nicht bestätigt.
+- Ein produktiver Reset wurde nicht ausgeführt.
 
-## Sicherheitsgrenze
-Kein automatischer Reset auf Basis von Tabellennamen, keine `TRUNCATE ... CASCADE`-Anweisung, kein Löschen von `users`, `company_settings`, Fahrzeugkonfiguration oder `audit_log`. Der Reset darf erst freigegeben werden, wenn Tests nachweisen, dass Mitarbeiter- und Konfigurationsdaten erhalten bleiben.
+## Deployment-Hinweis
+Das Repository enthält einen Dockerfile, der `node start-online.js` auf Port 8080 startet. In `.github/workflows` ist derzeit kein Hosting-Deployment-Workflow vorhanden. Das Hosting muss daher über die tatsächlich konfigurierte Plattform/den dortigen Deploy-Mechanismus aktualisiert werden. Ein erfolgreicher GitHub-Merge allein deployt die App nicht nachweislich.
+
+## Freigabeablauf
+1. Aktuelles vollständiges Datenbank-Backup erstellen.
+2. Backup isoliert wiederherstellen und sicherstellen, dass die Testinstanz keine produktiven Zugangsdaten nutzt.
+3. Sämtliche Prüfungen aus `docs/RESET-BACKUP-TEST-CHECKLIST.md` durchführen und protokollieren.
+4. Docker-Image/Anwendung über die konfigurierte Hosting-Plattform deployen.
+5. Admin-Vorschau prüfen; Rechnungs-Sperre und geschützte Tabellen verifizieren.
+6. Reset nur über die Admin-Oberfläche mit expliziter Kundenauswahl, erneutem Admin-Passwort und Bestätigungsphrase ausführen.
+
+**Sicherheitsgrenze:** Keine produktiven Daten löschen, solange Backup-Restore, Rollback und Erhalt der geschützten Tabellen nicht nachgewiesen sind.
