@@ -368,6 +368,60 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
     const eventKeyPrefixes=await q(`SELECT split_part(event_key,':',1) AS key_prefix,
       COUNT(*)::bigint AS row_count FROM notification_event_links
       GROUP BY split_part(event_key,':',1) ORDER BY key_prefix`);
+    // Read-only relationship preview: count children linked to known customer,
+    // order, and trip parents. No row contents or identifiers leave the database.
+    const relationshipPreview = await q(`
+      SELECT 'customers -> orders' AS relationship, COUNT(*)::bigint AS matched_rows
+        FROM orders o JOIN customers c ON c.id=o.customer_id
+      UNION ALL
+      SELECT 'customers -> transport_requests', COUNT(*)::bigint
+        FROM transport_requests r JOIN customers c ON c.id=r.customer_id
+      UNION ALL
+      SELECT 'customers -> trips', COUNT(*)::bigint
+        FROM trips t JOIN customers c ON c.id=t.customer_id
+      UNION ALL
+      SELECT 'trips -> trip_stops', COUNT(*)::bigint
+        FROM trip_stops s JOIN trips t ON t.id=s.trip_id
+      UNION ALL
+      SELECT 'trips -> control_alerts', COUNT(*)::bigint
+        FROM control_alerts a JOIN trips t ON t.id=a.trip_id
+      UNION ALL
+      SELECT 'trips -> delivery_documents', COUNT(*)::bigint
+        FROM delivery_documents d JOIN trips t ON t.id=d.trip_id
+      UNION ALL
+      SELECT 'trips -> gps_points', COUNT(*)::bigint
+        FROM gps_points g JOIN trips t ON t.id=g.trip_id
+      UNION ALL
+      SELECT 'trips -> trip_event_links', COUNT(*)::bigint
+        FROM trip_event_links e JOIN trips t ON t.id=e.trip_id
+      UNION ALL
+      SELECT 'orders -> order_event_links', COUNT(*)::bigint
+        FROM order_event_links e JOIN orders o ON o.id=e.order_id
+      UNION ALL
+      SELECT 'transport_requests -> transport_offers', COUNT(*)::bigint
+        FROM transport_offers o JOIN transport_requests r ON r.id=o.request_id
+    `);
+    // source_id has no FK: report only confirmed ID matches, never infer
+    // ownership from source text or delete unmatched/live notifications.
+    const notificationMatches = await q(`
+      SELECT 'notification_inbox' AS table_name, source,
+        COUNT(*)::bigint AS total_rows,
+        COUNT(*) FILTER (WHERE source='order' AND source_id IN (SELECT id FROM orders)
+          OR source='trip' AND source_id IN (SELECT id FROM trips))::bigint AS matched_test_domain_ids,
+        COUNT(*) FILTER (WHERE source IN ('order','trip') AND source_id IS NOT NULL
+          AND NOT (source='order' AND source_id IN (SELECT id FROM orders)
+            OR source='trip' AND source_id IN (SELECT id FROM trips)))::bigint AS unmatched_domain_ids
+      FROM notification_inbox GROUP BY source
+      UNION ALL
+      SELECT 'notification_event_links' AS table_name, source,
+        COUNT(*)::bigint AS total_rows,
+        COUNT(*) FILTER (WHERE source='order' AND source_id IN (SELECT id FROM orders)
+          OR source='trip' AND source_id IN (SELECT id FROM trips))::bigint AS matched_test_domain_ids,
+        COUNT(*) FILTER (WHERE source IN ('order','trip') AND source_id IS NOT NULL
+          AND NOT (source='order' AND source_id IN (SELECT id FROM orders)
+            OR source='trip' AND source_id IN (SELECT id FROM trips)))::bigint AS unmatched_domain_ids
+      FROM notification_event_links GROUP BY source
+    `);
     const counts=[];
     for(const row of tables){
       const name=String(row.table_name||"");
@@ -377,7 +431,8 @@ app.get("/api/admin/reset-preflight",auth,roles("Admin"),async(req,res)=>{
     }
     res.setHeader("Cache-Control","no-store");
     res.json({read_only:true,generated_at:new Date().toISOString(),tables:counts,columns,foreign_keys:foreignKeys,
-      notification_sources:notificationSources,event_sources:eventSources,event_key_prefixes:eventKeyPrefixes});
+      notification_sources:notificationSources,event_sources:eventSources,event_key_prefixes:eventKeyPrefixes,
+      relationship_preview:relationshipPreview,notification_matches:notificationMatches});
   }catch(e){
     console.error("Admin reset preflight failed:",e.message);
     res.status(500).json({error:"Datenbank-Vorabprüfung fehlgeschlagen"});
