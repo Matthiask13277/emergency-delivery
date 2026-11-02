@@ -1170,25 +1170,28 @@ if ("serviceWorker" in navigator) {
       "Datenbank prüfen":"company"
     };
     const page=routes[label];
-    if(page && typeof window.view==="function") {
+    if(page && typeof window.view==="function"){
       window.view(page);
       if(label==="Datenbank prüfen") setTimeout(()=>document.getElementById("resetPreflightPanel")?.scrollIntoView({behavior:"smooth",block:"start"}),300);
     }
   }
   function addNav(){
-    if(document.getElementById("edMobileNav")) return;
-    const n=document.createElement("nav");
-    n.id="edMobileNav"; n.className="ed-mobile-nav";
-    const driverRole=String(window.currentUser?.role||window.S?.user?.role||window.appState?.user?.role||"").trim().toLowerCase();
-    const isDriver=["driver","fahrer"].includes(driverRole);
-    n.innerHTML=
+    let n=document.getElementById("edMobileNav");
+    if(!n){n=document.createElement("nav");n.id="edMobileNav";n.className="ed-mobile-nav";document.body.appendChild(n);}
+    let role="";
+    try { role=(typeof S!=="undefined" ? S?.user?.role : "") || window.currentUser?.role || window.appState?.user?.role || ""; } catch(_){}
+    const isDriver=["driver","fahrer"].includes(String(role).trim().toLowerCase());
+    const isAdmin=["admin","administrator"].includes(String(role).trim().toLowerCase());
+    const html=
       '<button data-go="Dashboard">⌂<br>Start</button>'+
       (isDriver?'<button data-go="Fahrer-App">🚚<br>Fahrten</button>':'<button data-go="Auftrag+">▣<br>Auftrag+</button>')+
-      (isDriver?'<button data-go="Kalender">□<br>Kalender</button>':'<button data-go="Lieferscheine">▤<br>Liefers.</button>'+'<button data-go="Rechnungen">€<br>Rechn.</button>')+
-      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button>'+'<button data-go="Kalender">□<br>Kalender</button>'+'<button data-go="Mein Konto">●<br>Konto</button>')+
-      (!isDriver && String(window.S?.user?.role||"").toLowerCase()==="admin"?'<button data-go="Datenbank prüfen">⚙<br>Prüfen</button>':"");
-    n.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
-    document.body.appendChild(n);
+      (isDriver?'<button data-go="Kalender">□<br>Kalender</button>':'<button data-go="Lieferscheine">▤<br>Liefers.</button><button data-go="Rechnungen">€<br>Rechn.</button>')+
+      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button><button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>')+
+      (isAdmin?'<button data-go="Datenbank prüfen">⚙<br>Prüfen</button>':'');
+    if(n.innerHTML!==html){
+      n.innerHTML=html;
+      n.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>go(b.dataset.go)));
+    }
   }
   window.addEventListener("load",()=>setTimeout(addNav,300));
   const obs=new MutationObserver(()=>addNav());
