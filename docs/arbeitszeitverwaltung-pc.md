@@ -98,3 +98,11 @@ Der Branch ist nicht in den Hauptbranch gemergt und nicht live geschaltet.
 - Admin und AdminDriver können einen Übertrag mit Pflichtbegründung ausdrücklich genehmigen; Genehmiger, Zeitpunkt und Begründung werden gespeichert und auditiert.
 - PC-Oberfläche zeigt Anspruch, Übertrag und Genehmigungsstatus je Mitarbeiter.
 - Noch nicht enthalten: automatische Berechnung des Resturlaubs aus genommenen Tagen sowie die verbindliche Jahresabschluss-Freigabe.
+
+
+### Jahresabschluss-Protokoll (neu)
+- PC-Administration kann den Jahresabschlussstatus eines Kalenderjahres prüfen.
+- Ein Jahresabschluss ist erst möglich, wenn alle zwölf Monatsabschlüsse geschlossen und alle Arbeitszeiteinträge des Jahres bestätigt sind.
+- Der Abschluss speichert einen nachvollziehbaren Datenumfang (aktive Mitarbeiter, Zeiteinträge, Abwesenheiten), Abschlussgrund, Bearbeiter und Zeitstempel.
+- Eine Wiederöffnung erfordert einen Grund und wird auditiert.
+- Wichtig: Dieses Protokoll ist noch keine vollständige arbeits-/steuerrechtliche Jahresabrechnung und berechnet oder überträgt Resturlaub nicht automatisch. Die Urlaubsübertragung bleibt eine gesonderte ausdrückliche Genehmigung.
