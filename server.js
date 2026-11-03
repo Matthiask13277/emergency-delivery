@@ -659,6 +659,14 @@ async function worktimeMonthIsClosed(value){const iso=value instanceof Date?valu
 async function worktimeRangeTouchesClosed(from,to){return !!(await q("select 1 from employee_work_month_closures where status='closed' and (year*12+month) between (extract(year from $1::date)::int*12+extract(month from $1::date)::int) and (extract(year from $2::date)::int*12+extract(month from $2::date)::int) limit 1",[from,to])).length;}
 app.get("/api/worktime/admin/overview",auth,worktimeAdmin,async(req,res)=>{try{await ensureEmployeeWorktimeSchema();const from=req.query.from||new Date().toISOString().slice(0,8)+"01",to=req.query.to||new Date().toISOString().slice(0,10);const users=await q("select u.id,u.name,u.role,u.active,coalesce(p.weekly_target_minutes,2400) weekly_target_minutes,coalesce(p.daily_target_minutes,480) daily_target_minutes,coalesce(p.annual_leave_days,25) annual_leave_days,coalesce(p.region,'suedtirol') region,coalesce(p.work_days,ARRAY[1,2,3,4,5]) work_days from users u left join employee_work_profiles p on p.user_id=u.id where u.active=true order by u.name");const entries=await q("select e.*,u.name from employee_work_entries e join users u on u.id=e.user_id where e.work_date between $1::date and $2::date order by e.work_date,u.name,e.start_at",[from,to]);const absences=await q("select a.*,u.name from employee_work_absences a join users u on u.id=a.user_id where a.end_date >= $1::date and a.start_date <= $2::date order by a.start_date,u.name",[from,to]);const closures=await q("select * from employee_work_month_closures where (year,month) between (extract(year from $1::date)::int,extract(month from $1::date)::int) and (extract(year from $2::date)::int,extract(month from $2::date)::int)",[from,to]);res.json({from,to,users,entries,absences,closures});}catch(e){res.status(500).json({error:e.message});}});
 
+// Persönlicher Dienstplan: jeder angemeldete Mitarbeiter sieht ausschließlich eigene geplante Schichten.
+app.get("/api/worktime/my-shifts",auth,async(req,res)=>{try{
+ await ensureEmployeeWorktimeSchema();
+ const from=String(req.query.from||""),to=String(req.query.to||"");
+ if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)||to<from)return res.status(400).json({error:"Bitte einen gültigen Zeitraum angeben."});
+ const shifts=await q("select shift_date,start_at,end_at,break_minutes,note from employee_work_shifts where user_id=$1 and shift_date between $2::date and $3::date order by shift_date,start_at",[req.user.id,from,to]);
+ res.json({from,to,shifts});
+ }catch(e){res.status(500).json({error:e.message});}});
 // Geplante Schichten bleiben strikt von tatsächlichen Stempelzeiten getrennt.
 app.get("/api/worktime/admin/shifts",auth,worktimeAdmin,async(req,res)=>{try{
  await ensureEmployeeWorktimeSchema();
