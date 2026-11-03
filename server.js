@@ -600,7 +600,7 @@ app.get("/api/time-clock/me",auth,async(req,res)=>{
 });
 app.post("/api/time-clock/in",auth,async(req,res)=>{
   try{
-    if(!["Driver","AdminDriver","Dispatcher","Accounting"].includes(String(req.user.role||"")))return res.status(403).json({error:"Für diese Rolle ist keine Mitarbeiter-Stempeluhr vorgesehen."});
+    if(!["Driver","Admin","AdminDriver","Dispatcher","Accounting"].includes(String(req.user.role||"")))return res.status(403).json({error:"Für diese Rolle ist keine Mitarbeiter-Stempeluhr vorgesehen."});
     const open=(await q(`select id from employee_time_entries where user_id=$1 and clock_out_at is null`,[req.user.id]))[0];
     if(open)return res.status(409).json({error:"Du bist bereits eingestempelt."});
     const r=(await q(`insert into employee_time_entries(user_id) values($1) returning id,clock_in_at,auto_break_minutes`,[req.user.id]))[0];
