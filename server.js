@@ -3117,7 +3117,7 @@ app.post("/api/vehicles/:id/fuel",auth,roles("Admin","Dispatcher","Accounting"),
     res.json(r[0]);
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.get("/api/reports/economics",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.get("/api/reports/economics",auth,roles("Admin","AdminDriver","Dispatcher","Accounting"),async(req,res)=>{
   try{
     await getEconomicsSchemaReady();
     const from=req.query.from||new Date(new Date().setDate(new Date().getDate()-30)).toISOString().slice(0,10);
