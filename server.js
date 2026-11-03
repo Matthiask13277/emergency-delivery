@@ -595,8 +595,8 @@ app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(r
 // Employee time clock: timestamps only; no location data is collected.
 app.get("/api/time-clock/me",auth,async(req,res)=>{
   try{
-    const open=(await q(`select id,clock_in_at,auto_break_minutes from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1`,[req.user.id]))[0]||null;
-    const history=await q(`select id,clock_in_at,clock_out_at,auto_break_minutes,case when clock_out_at is null then null else greatest(0,round(extract(epoch from (clock_out_at-clock_in_at))/60)::int-auto_break_minutes) end net_minutes from employee_time_entries where user_id=$1 order by clock_in_at desc limit 30`,[req.user.id]);
+    const open=(await q(`select id,clock_in_at,auto_break_minutes,break_minutes,break_started_at from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1`,[req.user.id]))[0]||null;
+    const history=await q(`select id,clock_in_at,clock_out_at,auto_break_minutes,break_minutes,case when clock_out_at is null then null else greatest(0,round(extract(epoch from (clock_out_at-clock_in_at))/60)::int-auto_break_minutes-break_minutes) end net_minutes from employee_time_entries where user_id=$1 order by clock_in_at desc limit 30`,[req.user.id]);
     res.json({open,history});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -605,19 +605,31 @@ app.post("/api/time-clock/in",auth,async(req,res)=>{
     if(!["Driver","Admin","AdminDriver","Dispatcher","Accounting"].includes(String(req.user.role||"")))return res.status(403).json({error:"Für diese Rolle ist keine Mitarbeiter-Stempeluhr vorgesehen."});
     const open=(await q(`select id from employee_time_entries where user_id=$1 and clock_out_at is null`,[req.user.id]))[0];
     if(open)return res.status(409).json({error:"Du bist bereits eingestempelt."});
-    const r=(await q(`insert into employee_time_entries(user_id) values($1) returning id,clock_in_at,auto_break_minutes`,[req.user.id]))[0];
+    const r=(await q(`insert into employee_time_entries(user_id) values($1) returning id,clock_in_at,auto_break_minutes,break_minutes,break_started_at`,[req.user.id]))[0];
     await audit(req,"TIME_CLOCK_IN","Eingestempelt");res.status(201).json(r);
+  }catch(e){res.status(500).json({error:e.message});}
+});
+app.post("/api/time-clock/pause/start",auth,async(req,res)=>{
+  try{
+    const r=(await q(`update employee_time_entries set break_started_at=now() where id=(select id from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1) and break_started_at is null returning id,break_started_at,break_minutes`,[req.user.id]))[0];
+    if(!r)return res.status(409).json({error:"Keine laufende Stempelung gefunden oder eine Pause läuft bereits."});
+    await audit(req,"TIME_CLOCK_BREAK_START","Pause begonnen");res.json(r);
+  }catch(e){res.status(500).json({error:e.message});}
+});
+app.post("/api/time-clock/pause/end",auth,async(req,res)=>{
+  try{
+    const r=(await q(`update employee_time_entries set break_minutes=break_minutes+greatest(0,round(extract(epoch from (now()-break_started_at))/60)::int),break_started_at=null where id=(select id from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1) and break_started_at is not null returning id,break_minutes`,[req.user.id]))[0];
+    if(!r)return res.status(409).json({error:"Es läuft derzeit keine Pause."});
+    await audit(req,"TIME_CLOCK_BREAK_END","Pause beendet; insgesamt "+r.break_minutes+" Min.");res.json(r);
   }catch(e){res.status(500).json({error:e.message});}
 });
 app.post("/api/time-clock/out",auth,async(req,res)=>{
   try{
     const open=(await q(`select id,clock_in_at from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1`,[req.user.id]))[0];
     if(!open)return res.status(409).json({error:"Du bist derzeit nicht eingestempelt."});
-    const grossMinutes=Math.max(0,Math.round((Date.now()-new Date(open.clock_in_at).getTime())/60000));
-    const cfg=(await q("select time_break_threshold_minutes,time_break_deduction_minutes from company_settings where id=1"))[0]||{time_break_threshold_minutes:360,time_break_deduction_minutes:30};
-    const autoBreak=grossMinutes>Number(cfg.time_break_threshold_minutes||360)?Number(cfg.time_break_deduction_minutes||30):0;
-    const r=(await q(`update employee_time_entries set clock_out_at=now(),auto_break_minutes=$1 where id=$2 and user_id=$3 and clock_out_at is null returning id,clock_in_at,clock_out_at,auto_break_minutes`,[autoBreak,open.id,req.user.id]))[0];
-    await audit(req,"TIME_CLOCK_OUT",`Ausgestempelt; ${grossMinutes} Min. Anwesenheit, ${autoBreak} Min. automatische Pause`);res.json(r);
+    const r=(await q(`update employee_time_entries set clock_out_at=now(),auto_break_minutes=0,break_minutes=break_minutes+case when break_started_at is null then 0 else greatest(0,round(extract(epoch from (now()-break_started_at))/60)::int) end,break_started_at=null where id=$1 and user_id=$2 and clock_out_at is null returning id,clock_in_at,clock_out_at,auto_break_minutes,break_minutes`,[open.id,req.user.id]))[0];
+    const grossMinutes=Math.max(0,Math.round((new Date(r.clock_out_at).getTime()-new Date(r.clock_in_at).getTime())/60000));
+    await audit(req,"TIME_CLOCK_OUT","Ausgestempelt; "+grossMinutes+" Min. Anwesenheit, "+r.break_minutes+" Min. tatsächlich erfasste Pause");res.json(r);
   }catch(e){res.status(500).json({error:e.message});}
 });
 app.get("/api/time-clock/settings",auth,roles("Admin","AdminDriver"),async(req,res)=>{try{const r=(await q("select time_break_threshold_minutes,time_break_deduction_minutes from company_settings where id=1"))[0]||{};res.json({threshold_minutes:r.time_break_threshold_minutes??360,deduction_minutes:r.time_break_deduction_minutes??30});}catch(e){res.status(500).json({error:e.message});}});
