@@ -165,7 +165,7 @@ table{display:block;max-width:100%;overflow-x:auto}
   body{padding-bottom:78px}
 }
 @media (min-width:821px){.ed-mobile-nav{display:none!important}}
-@media (max-width:820px){.ed-mobile-nav.admin-nav{grid-template-columns:repeat(9,minmax(0,1fr))}}
+@media (max-width:820px){#edMobileNav button[data-go="Datenbank prüfen"]{display:none!important}}
 \n.unassigned-order { background: #fff7ed; box-shadow: inset 4px 0 #f59e0b; }\n.unassigned-order td { background-color: #fff7ed; }\n</style>
 </head><body><button id="installMobileApp" onclick="installEmergencyApp()" style="display:none;position:fixed;right:16px;bottom:76px;z-index:101;border:0;border-radius:14px;padding:12px 16px;background:#d89b28;color:#111;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.25)">📱 App installieren</button><div id="root"></div><script>
 let S=null,T=localStorage.edv10||"",OT=localStorage.edv10_offline||"";const root=document.getElementById("root");
@@ -1215,7 +1215,7 @@ if ("serviceWorker" in navigator) {
       (isDriver?'<button data-go="Fahrer-App">🚚<br>Fahrten</button>':'<button data-go="Auftrag+">▣<br>Auftrag+</button>')+
       (isDriver?'<button data-go="Kalender">□<br>Kalender</button>':'<button data-go="Lieferscheine">▤<br>Liefers.</button><button data-go="Rechnungen">€<br>Rechn.</button>')+
       (isAdmin?'<button data-go="Kunden">♙<br>Kunden</button>':'')+
-      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button><button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>')+
+      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':(isAdmin?'<button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button><button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>'))+
       (isAdmin?'<button data-go="Datenbank prüfen">⚙<br>Prüfen</button>':'');
     if(n.innerHTML!==html){
       n.innerHTML=html;
