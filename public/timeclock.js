@@ -2,7 +2,7 @@
 (function(){
   window.currentTimeReport=[];
   function fmt(v){return v?new Date(v).toLocaleString("de-DE"):"—";}
-  function hours(m){return m==null?"—":Math.floor(m/60)+" Std. "+String(m%60).padStart(2,"0")+" Min.";}
+  function hours(m){return m==null?"—":Math.floor(m/60)+" Stunden "+String(m%60).padStart(2,"0")+" Min.";}
   window.renderTimeClockPage=function(){
     var rawRole=(typeof S!=="undefined"&&S&&S.user&&S.user.role)||(window.currentUser&&window.currentUser.role)||(window.appState&&window.appState.user&&window.appState.user.role)||"";
     var role=String(rawRole).trim().toLowerCase();
