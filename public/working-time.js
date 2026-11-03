@@ -51,7 +51,7 @@
       const d=await api("/api/worktime/me");
       let box=document.getElementById("myWorktimeSummary");
       if(!box){box=document.createElement("div");box.id="myWorktimeSummary";c.appendChild(box);}
-      box.innerHTML=d.entries.length?'<div class="panel"><h3>Meine Arbeitszeiten zur Bestätigung</h3>'+d.entries.map(e=>'<p>'+esc(String(e.work_date).slice(0,10))+' · '+esc(String(e.start_at).slice(0,5))+'–'+esc(String(e.end_at).slice(0,5))+' · Pause '+e.break_minutes+' Min. · '+esc(e.status)+'</p>'+(e.status==="pending"?'<button class="btn primary" onclick="confirmMyWorktime(\\''+e.id+'\\')">Bestätigen</button> <button class="btn secondary" onclick="disputeMyWorktime(\\''+e.id+'\\')">Beanstanden</button>':'')).join("")+'</div>':'';
+      box.innerHTML=d.entries.length?'<div class="panel"><h3>Meine Arbeitszeiten zur Bestätigung</h3>'+d.entries.map(e=>'<p>'+esc(String(e.work_date).slice(0,10))+' · '+esc(String(e.start_at).slice(0,5))+'–'+esc(String(e.end_at).slice(0,5))+' · Pause '+e.break_minutes+' Min. · '+esc(e.status)+'</p>'+(e.status==="pending"?'<button class="btn primary" onclick="confirmMyWorktime(&#39;'+e.id+'&#39;)">Bestätigen</button> <button class="btn secondary" onclick="disputeMyWorktime(&#39;'+e.id+'&#39;)">Beanstanden</button>':'')).join("")+'</div>':'';
     }catch(e){}
   };
   window.disputeMyWorktime=async function(id){const reason=prompt("Was stimmt an diesem Eintrag nicht?");if(!reason)return;try{await api("/api/worktime/me/"+id+"/dispute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reason})});window.renderMyWorktimeSummary();}catch(e){alert(e.message);}};
