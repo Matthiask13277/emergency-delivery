@@ -110,6 +110,21 @@ app.use(desktopCloudProxy);
 async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
 }
+async function ensureEmployeeTimeTrackingSchema(){
+  await q(`CREATE TABLE IF NOT EXISTS employee_time_entries (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id),
+    clock_in_at timestamptz NOT NULL DEFAULT now(),
+    clock_in_lat numeric NOT NULL, clock_in_lng numeric NOT NULL,
+    clock_out_at timestamptz, clock_out_lat numeric, clock_out_lng numeric,
+    auto_break_minutes integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CHECK ((clock_out_at IS NULL AND clock_out_lat IS NULL AND clock_out_lng IS NULL) OR
+           (clock_out_at IS NOT NULL AND clock_out_lat IS NOT NULL AND clock_out_lng IS NOT NULL))
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_employee_time_user_clockin ON employee_time_entries(user_id,clock_in_at DESC)`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_time_one_open_entry ON employee_time_entries(user_id) WHERE clock_out_at IS NULL`);
+}
 // Allow the combined administrator/driver role in older hosted databases.
 // Preserve every role already present, and add the application's supported roles.
 // The DO block runs atomically and changes only the users.role CHECK constraint.
@@ -330,6 +345,7 @@ async function runSchemaInitializer(name, initializer){
   }
 }
 runSchemaInitializer("trips.priority",ensureTripsPriorityColumn);
+runSchemaInitializer("employee time tracking",ensureEmployeeTimeTrackingSchema);
 runSchemaInitializer("users.role constraint",ensureUserRoleConstraint);
 runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
 runSchemaInitializer("V183",ensureV183Columns);
@@ -522,6 +538,55 @@ app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(r
   }finally{if(client)client.release();}
 });
 
+// Employee time clock: location is captured only at explicit clock-in / clock-out.
+app.get("/api/time-clock/me",auth,async(req,res)=>{
+  try{
+    const open=(await q(`select id,clock_in_at,auto_break_minutes from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1`,[req.user.id]))[0]||null;
+    const history=await q(`select id,clock_in_at,clock_out_at,auto_break_minutes,
+      case when clock_out_at is null then null else greatest(0,round(extract(epoch from (clock_out_at-clock_in_at))/60)::int-auto_break_minutes) end net_minutes
+      from employee_time_entries where user_id=$1 order by clock_in_at desc limit 30`,[req.user.id]);
+    res.json({open,history});
+  }catch(e){res.status(500).json({error:e.message});}
+});
+app.post("/api/time-clock/in",auth,async(req,res)=>{
+  try{
+    const lat=Number(req.body?.latitude),lng=Number(req.body?.longitude);
+    if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return res.status(400).json({error:"Standortfreigabe ist erforderlich, um einzustempeln."});
+    const role=String(req.user.role||"");
+    if(!["Driver","AdminDriver","Dispatcher","Accounting"].includes(role))return res.status(403).json({error:"Für diese Rolle ist keine Mitarbeiter-Stempeluhr vorgesehen."});
+    const open=(await q(`select id from employee_time_entries where user_id=$1 and clock_out_at is null`,[req.user.id]))[0];
+    if(open)return res.status(409).json({error:"Du bist bereits eingestempelt."});
+    const r=(await q(`insert into employee_time_entries(user_id,clock_in_lat,clock_in_lng) values($1,$2,$3) returning id,clock_in_at,auto_break_minutes`,[req.user.id,lat,lng]))[0];
+    await audit(req,"TIME_CLOCK_IN",`Eingestempelt; Standort ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    res.status(201).json(r);
+  }catch(e){res.status(500).json({error:e.message});}
+});
+app.post("/api/time-clock/out",auth,async(req,res)=>{
+  try{
+    const lat=Number(req.body?.latitude),lng=Number(req.body?.longitude);
+    if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return res.status(400).json({error:"Standortfreigabe ist erforderlich, um auszustempeln."});
+    const open=(await q(`select id,clock_in_at from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1`,[req.user.id]))[0];
+    if(!open)return res.status(409).json({error:"Du bist derzeit nicht eingestempelt."});
+    const grossMinutes=Math.max(0,Math.round((Date.now()-new Date(open.clock_in_at).getTime())/60000));
+    const autoBreak=grossMinutes>360?30:0;
+    const r=(await q(`update employee_time_entries set clock_out_at=now(),clock_out_lat=$1,clock_out_lng=$2,auto_break_minutes=$3 where id=$4 and user_id=$5 and clock_out_at is null returning id,clock_in_at,clock_out_at,auto_break_minutes`,[lat,lng,autoBreak,open.id,req.user.id]))[0];
+    await audit(req,"TIME_CLOCK_OUT",`Ausgestempelt; ${grossMinutes} Min. Anwesenheit, ${autoBreak} Min. automatische Pause; Standort ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    res.json(r);
+  }catch(e){res.status(500).json({error:e.message});}
+});
+app.get("/api/time-clock/report",auth,roles("Admin","AdminDriver"),async(req,res)=>{
+  try{
+    const from=req.query.from||new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+    const to=req.query.to||new Date().toISOString().slice(0,10);
+    const rows=await q(`select e.id,e.user_id,u.name,u.role,e.clock_in_at,e.clock_out_at,e.auto_break_minutes,
+      case when e.clock_out_at is null then null else greatest(0,round(extract(epoch from (e.clock_out_at-e.clock_in_at))/60)::int-e.auto_break_minutes) end net_minutes,
+      e.clock_in_lat,e.clock_in_lng,e.clock_out_lat,e.clock_out_lng
+      from employee_time_entries e join users u on u.id=e.user_id
+      where e.clock_in_at >= $1::date and e.clock_in_at < ($2::date + interval '1 day')
+      order by e.clock_in_at desc`,[from,to]);
+    res.json({from,to,entries:rows});
+  }catch(e){res.status(500).json({error:e.message});}
+});
 // V176 Mitarbeiterakte
 app.get("/api/employees", auth, roles("Admin","Dispatcher","Accounting"), async (req,res)=>{
   try{res.json(await q(`SELECT u.id,u.username,u.name,u.role,u.phone,u.email,u.address,u.postal_code,u.city,u.license_class,u.entry_date,u.active,u.assigned_vehicle_id,u.permissions,v.name AS vehicle_name,v.plate AS vehicle_plate FROM users u LEFT JOIN vehicles v ON v.id=u.assigned_vehicle_id ORDER BY u.name ASC`))}
