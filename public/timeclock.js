@@ -1,0 +1,26 @@
+
+(function(){
+  window.currentTimeReport=[];
+  function fmt(v){return v?new Date(v).toLocaleString("de-DE"):"—";}
+  function hours(m){return m==null?"—":Math.floor(m/60)+" Std. "+String(m%60).padStart(2,"0")+" Min.";}
+  window.renderTimeClockPage=function(){
+    var role=window.S&&S.user?S.user.role:"";
+    var clock=["Driver","AdminDriver","Dispatcher","Accounting"].includes(role);
+    var report=["Admin","AdminDriver"].includes(role);
+    var c=document.getElementById("content")||document.querySelector("main .wrap");
+    if(!c)c=document.querySelector(".main .wrap");
+    if(!c)return;
+    c.innerHTML='<div class="page-head"><h2>Zeiterfassung</h2><p class="muted">Arbeitszeiten erfassen – ohne Standortdaten.</p></div>'+
+      (clock?'<div class="panel"><h3>Meine Stempeluhr</h3><div id="clockStatus">Lade…</div><div class="row"><button id="clockInBtn" class="btn primary" onclick="submitTimeClock(\'in\')">Einstempeln</button><button id="clockOutBtn" class="btn secondary" onclick="submitTimeClock(\'out\')">Ausstempeln</button></div><div id="myTimeHistory"></div></div>':'')+
+      (report?'<div class="panel"><h3>Mitarbeiter-Auswertung</h3><div class="form form-2"><label>Von <input id="timeFrom" type="date"></label><label>Bis <input id="timeTo" type="date"></label></div><div class="row"><button class="btn primary" onclick="loadTimeReport()">Auswertung laden</button><button class="btn secondary" onclick="exportTimeReport()">CSV exportieren</button></div><div id="timeReport"></div><hr><h3>Automatische Pause</h3><div class="form form-2"><label>Ab Arbeitszeit (Minuten)<input id="timeBreakThreshold" type="number" min="1" max="1440"></label><label>Pause abziehen (Minuten)<input id="timeBreakDeduction" type="number" min="0" max="240"></label></div><button class="btn primary" onclick="saveTimeSettings()">Pausenregel speichern</button></div>':'');
+    if(clock)loadMyTimeClock();
+    if(report){var d=new Date(),f=new Date();f.setDate(d.getDate()-30);document.getElementById("timeTo").value=iso(d);document.getElementById("timeFrom").value=iso(f);loadTimeReport();loadTimeSettings();}
+  };
+  function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+  window.loadMyTimeClock=async function(){try{var d=await api("/api/time-clock/me"),active=!!d.open;document.getElementById("clockStatus").textContent=active?"Eingestempelt seit "+fmt(d.open.clock_in_at):"Nicht eingestempelt";document.getElementById("clockInBtn").disabled=active;document.getElementById("clockOutBtn").disabled=!active;document.getElementById("myTimeHistory").innerHTML=(d.history||[]).map(function(x){return "<p>"+fmt(x.clock_in_at)+" – "+fmt(x.clock_out_at)+" · Pause "+x.auto_break_minutes+" Min. · "+hours(x.net_minutes)+"</p>";}).join("")||"Noch keine Einträge.";}catch(e){document.getElementById("clockStatus").textContent=e.message;}};
+  window.submitTimeClock=async function(a){try{await api("/api/time-clock/"+a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});await loadMyTimeClock();}catch(e){alert(e.message);}};
+  window.loadTimeReport=async function(){try{var f=document.getElementById("timeFrom").value,t=document.getElementById("timeTo").value;if(!f||!t||f>t)throw Error("Bitte einen gültigen Zeitraum wählen.");var d=await api("/api/time-clock/report?from="+f+"&to="+t);window.currentTimeReport=d.entries||[];document.getElementById("timeReport").innerHTML="<div style='overflow:auto'><table><tr><th>Mitarbeiter</th><th>Beginn</th><th>Ende</th><th>Pause</th><th>Arbeitszeit</th></tr>"+window.currentTimeReport.map(function(x){return "<tr><td>"+esc(x.name)+"</td><td>"+fmt(x.clock_in_at)+"</td><td>"+fmt(x.clock_out_at)+"</td><td>"+x.auto_break_minutes+" Min.</td><td>"+hours(x.net_minutes)+"</td></tr>";}).join("")+"</table></div>";}catch(e){alert(e.message);}};
+  window.loadTimeSettings=async function(){try{var x=await api("/api/time-clock/settings");document.getElementById("timeBreakThreshold").value=x.threshold_minutes;document.getElementById("timeBreakDeduction").value=x.deduction_minutes;}catch(e){alert(e.message);}};
+  window.saveTimeSettings=async function(){try{await api("/api/time-clock/settings",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({threshold_minutes:Number(document.getElementById("timeBreakThreshold").value),deduction_minutes:Number(document.getElementById("timeBreakDeduction").value)})});alert("Pausenregel gespeichert.");}catch(e){alert(e.message);}};
+  window.exportTimeReport=function(){var rows=window.currentTimeReport||[];if(!rows.length)return alert("Keine Daten zum Exportieren.");var csv=["Mitarbeiter;Beginn;Ende;Pause;Arbeitszeit"].concat(rows.map(function(x){return [x.name,x.clock_in_at,x.clock_out_at,x.auto_break_minutes,x.net_minutes].join(";");})).join("\r\n");var a=document.createElement("a"),u=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}));a.href=u;a.download="zeiterfassung.csv";a.click();URL.revokeObjectURL(u);};
+})();
