@@ -27,6 +27,7 @@ Status: Umsetzungsvorgabe für den Branch `feature/arbeitszeitverwaltung-pc`.
 - Soll/Ist, Plus-/Minusstunden und laufender Saldo.
 - Freizeitausgleich und zur Auszahlung vorgemerkte Stunden getrennt führen; Vormerkung ist keine bestätigte Auszahlung.
 - Urlaub und Krankheit werden nach dem individuellen Tages-Soll angerechnet.
+- Die Jahresansicht berechnet genommene Urlaubstage anhand genehmigter Urlaubszeiträume, individueller Arbeitstage und gesetzlicher Feiertage; Rest = Anspruch + genehmigter Übertrag − genommen.
 - Urlaubsanspruch individuell; genommen, Rest und Übertrag separat führen.
 - Beschäftigungsperioden, Archivierung und Wiederaktivierung ohne Verlust der Historie.
 
