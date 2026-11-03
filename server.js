@@ -110,7 +110,13 @@ app.use(desktopCloudProxy);
 async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
 }
-
+// Allow the combined administrator/driver role in older hosted databases.
+// Preserve every role already present, and add the application's supported roles.
+// The DO block runs atomically and changes only the users.role CHECK constraint.
+async function ensureUserRoleConstraint(){
+  await q(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
+  await q(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('Admin','Dispatcher','Driver','Accounting','AdminDriver'))`);
+}
 // Keep delivery-proof and geofence fields used by the driver APIs compatible with PostgreSQL.
 // Each statement is idempotent so startup can safely retry after a database reconnect.
 async function ensureTripSignatureColumns(){
@@ -324,6 +330,7 @@ async function runSchemaInitializer(name, initializer){
   }
 }
 runSchemaInitializer("trips.priority",ensureTripsPriorityColumn);
+runSchemaInitializer("users.role constraint",ensureUserRoleConstraint);
 runSchemaInitializer("trip signature/geofence",ensureTripSignatureColumns);
 runSchemaInitializer("V183",ensureV183Columns);
 runSchemaInitializer("company settings",ensureCompanySettings);
