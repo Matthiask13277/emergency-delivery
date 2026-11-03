@@ -7121,6 +7121,7 @@ function getCalendarSchemaReady(){
   return calendarSchemaReady;
 }
 
+app.get('/api/calendar/worktime-absences',auth,roles('Admin','AdminDriver'),async(req,res)=>{try{await ensureEmployeeWorktimeSchema();const from=req.query.from||new Date().toISOString().slice(0,10),to=req.query.to||from;const rows=await q("select a.id,a.user_id,u.name,a.start_date,a.end_date,a.absence_type from employee_work_absences a join users u on u.id=a.user_id where a.start_date<=$2::date and a.end_date>=$1::date order by a.start_date,u.name",[from,to]);res.json(rows.map(a=>({...a,label:a.absence_type==="vacation"?"Urlaub":a.absence_type==="sick"?"Krankheit":"Zeitausgleich"})));}catch(e){res.status(500).json({error:e.message});}});
 app.get('/api/calendar/events',auth,async(req,res)=>{
   try{await getCalendarSchemaReady();
     const from=req.query.from||'1900-01-01', to=req.query.to||'2999-12-31';
