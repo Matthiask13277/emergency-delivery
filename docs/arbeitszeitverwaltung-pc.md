@@ -101,6 +101,9 @@ Der Branch ist nicht in den Hauptbranch gemergt und nicht live geschaltet.
 
 
 ### Jahresabschluss-Protokoll (neu)
+
+- Nach einem Jahresabschluss sind Änderungen an den globalen Mitarbeiter-Sollzeitprofilen gesperrt, weil diese Profile rückwirkend in die Soll- und Urlaubsberechnung einfließen. Vor einer Profiländerung müssen abgeschlossene Jahresabschlüsse kontrolliert wieder geöffnet werden.
+- Anspruchs- und Übertragswerte eines konkret abgeschlossenen Urlaubsjahres sind ebenfalls gesperrt, bis dieses Jahr kontrolliert wieder geöffnet wurde.
 - PC-Administration kann den Jahresabschlussstatus eines Kalenderjahres prüfen.
 - Ein Jahresabschluss ist erst möglich, wenn alle zwölf Monatsabschlüsse geschlossen und alle Arbeitszeiteinträge des Jahres bestätigt sind.
 - Der Abschluss speichert einen nachvollziehbaren Datenumfang (aktive Mitarbeiter, Zeiteinträge, Abwesenheiten), Abschlussgrund, Bearbeiter und Zeitstempel.
