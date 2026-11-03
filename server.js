@@ -663,7 +663,7 @@ app.get("/api/worktime/admin/overview",auth,worktimeAdmin,async(req,res)=>{try{a
 app.get("/api/worktime/my-shifts",auth,async(req,res)=>{try{
  await ensureEmployeeWorktimeSchema();
  const from=String(req.query.from||""),to=String(req.query.to||"");
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(from)||!/^\\d{4}-\\d{2}-\\d{2}$/.test(to)||to<from)return res.status(400).json({error:"Bitte einen gültigen Zeitraum angeben."});
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<from)return res.status(400).json({error:"Bitte einen gültigen Zeitraum angeben."});
  const shifts=await q("select shift_date,start_at,end_at,break_minutes,note from employee_work_shifts where user_id=$1 and shift_date between $2::date and $3::date order by shift_date,start_at",[req.user.id,from,to]);
  res.json({from,to,shifts});
  }catch(e){res.status(500).json({error:e.message});}});
