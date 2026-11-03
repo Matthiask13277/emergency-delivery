@@ -954,7 +954,7 @@ async function loadCustomersManage(mode="active"){
     window.customerCache=r;
     box.innerHTML=r.length?r.map(x=>`<div class="listRow customer-row">
       <div class="customer-main"><b>${esc(x.company)}</b><div class="muted">${esc(x.customer_number||"Ohne Kundennummer")} · ${esc(x.contact_name||"Kein Ansprechpartner")} · ${esc(x.city||"Kein Ort")}</div><div class="muted">${esc(x.email||"Keine E-Mail")} · ${esc(x.phone||x.mobile||"Keine Telefonnummer")}</div></div>
-      <div class="customer-actions"><button class="btn primary" onclick="openCustomerFile('${x.id}')">Akte</button>${mode==="archived"?`<button class="btn secondary" onclick="restoreCustomer('${x.id}')">Wiederherstellen</button>`:`<button class="btn secondary" onclick="openCustomer('${x.id}')">Bearbeiten</button><button class="btn danger" onclick="deleteCustomer('${x.id}')">Archivieren</button>`}</div>
+      <div class="customer-actions"><button class="btn primary" onclick="openCustomerFile('${x.id}')">Akte</button>${mode==="archived"?`<button class="btn secondary" onclick="restoreCustomer('${x.id}')">Wiederherstellen</button>`:`<button class="btn secondary" onclick="openCustomer('${x.id}')">Bearbeiten</button>`}</div>
     </div>`).join(""):`<p class='muted'>${mode==="archived"?"Keine archivierten Kunden vorhanden.":"Noch keine aktiven Kunden vorhanden."}</p>`;
   }catch(e){box.innerHTML=`<div class="error">${esc(e.message)}</div>`}
 }
