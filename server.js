@@ -119,6 +119,9 @@ async function ensureEmployeeTimeTrackingSchema(){
     auto_break_minutes integer NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now()
   )`);
+  await q(`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS time_break_threshold_minutes integer NOT NULL DEFAULT 360`);
+  await q(`ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS time_break_deduction_minutes integer NOT NULL DEFAULT 30`);
+
   await q(`CREATE INDEX IF NOT EXISTS idx_employee_time_user_clockin ON employee_time_entries(user_id,clock_in_at DESC)`);
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_time_one_open_entry ON employee_time_entries(user_id) WHERE clock_out_at IS NULL`);
 }// Allow the combined administrator/driver role in older hosted databases.
@@ -534,6 +537,7 @@ app.post("/api/admin/reset-test-data",auth,roles("Admin"),resetRateLimit,async(r
   }finally{if(client)client.release();}
 });
 
+// Company-wide automatic break deduction settings (editable by administrators).
 // Employee time clock: timestamps only; no location data is collected.
 app.get("/api/time-clock/me",auth,async(req,res)=>{
   try{
