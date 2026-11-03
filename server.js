@@ -538,7 +538,7 @@ app.patch("/api/employees/:id", auth, roles("Admin"), async (req,res)=>{
   try{
     const {username,name,role,password,phone,email,address,postal_code,city,license_class,entry_date,active,assigned_vehicle_id,permissions}=req.body||{};
     if(!name||!role)return res.status(400).json({error:"Name und Rolle sind erforderlich"});
-    if(!["Admin","Dispatcher","Driver","Accounting"].includes(role))return res.status(400).json({error:"Ungültige Rolle"});
+    if(!["Admin","AdminDriver","Dispatcher","Driver","Accounting"].includes(role))return res.status(400).json({error:"Ungültige Rolle"});
     const cleanUsername=String(username||"").trim();
     if(!cleanUsername)return res.status(400).json({error:"Benutzername ist erforderlich"});
     const existing=await q("select id from users where username=$1 and id<>$2",[cleanUsername,req.params.id]);
@@ -2746,7 +2746,7 @@ app.post("/api/users",auth,roles("Admin"),async(req,res)=>{
   try{
     const username=String(req.body.username||"").trim(), name=String(req.body.name||"").trim(), role=String(req.body.role||"Driver");
     const pw=String(req.body.password||""); if(!username||!name||pw.length<8)return res.status(400).json({error:"Username, Name und Passwort (8+) erforderlich"});
-    if(!["Admin","Dispatcher","Driver","Accounting"].includes(role))return res.status(400).json({error:"Ungültige Rolle"});
+    if(!["Admin","AdminDriver","Dispatcher","Driver","Accounting"].includes(role))return res.status(400).json({error:"Ungültige Rolle"});
     const hash=await bcrypt.hash(pw,12);
     const r=await q(`insert into users(username,name,role,password_hash,email,phone,must_change_password) values($1,$2,$3,$4,$5,$6,true)
       returning id,username,name,role,email,phone,active,must_change_password`,[username,name,role,hash,req.body.email||null,req.body.phone||null]);
