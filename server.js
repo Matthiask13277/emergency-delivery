@@ -1774,7 +1774,7 @@ app.patch("/api/planning/stops/:id",auth,roles("Admin","Dispatcher"),async(req,r
 
 app.post("/api/planning/trips/:id/assign-driver",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const driver=(await q("select id,name from users where id=$1 and role='Driver'",[req.body.driverId]))[0];
+    const driver=(await q("select id,name from users where id=$1 and role IN ('Driver','AdminDriver')",[req.body.driverId]))[0];
     if(!driver)return res.status(400).json({error:"Fahrer nicht gefunden"});
     const r=(await q("update trips set driver_id=$1 where id=$2 returning *",[driver.id,req.params.id]))[0];
     if(!r)return res.status(404).json({error:"Tour nicht gefunden"});
@@ -1794,7 +1794,7 @@ app.post("/api/planning/trips/:id/reorder",auth,roles("Admin","Dispatcher"),asyn
 
 app.get("/api/planning/dispatchers",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
-    const drivers=await q("select id,name,username from users where role='Driver' order by name");
+    const drivers=await q("select id,name,username from users where role IN ('Driver','AdminDriver') order by name");
     const vehicles=await q("select id,name,plate from vehicles where active=true order by name");
     res.json({drivers,vehicles});
   }catch(e){res.status(500).json({error:e.message});}
@@ -1808,7 +1808,7 @@ app.get("/api/planning/work-rules",auth,roles("Admin","Dispatcher"),async(req,re
     const drivers=await q(`select u.id,u.name,coalesce(w.work_start,'08:00') work_start,
       coalesce(w.work_end,'17:00') work_end,w.break_start,w.break_end
       from users u left join driver_work_rules w on w.driver_id=u.id
-      where u.role='Driver' order by u.name`);
+      where u.role IN ('Driver','AdminDriver') order by u.name`);
     res.json(drivers);
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -2008,7 +2008,7 @@ app.get("/api/planning/shifts",auth,roles("Admin","Dispatcher"),async(req,res)=>
     const date=req.query.date||new Date().toISOString().slice(0,10);
     const rows=await q(`select u.id driver_id,u.name,coalesce(s.status,'planned') status,s.start_at,s.end_at,s.break_minutes
       from users u left join driver_shifts s on s.driver_id=u.id and s.shift_date=$1
-      where u.role='Driver' order by u.name`,[date]);
+      where u.role IN ('Driver','AdminDriver') order by u.name`,[date]);
     res.json({date,drivers:rows});
   }catch(e){res.status(500).json({error:e.message});}
 });
@@ -2031,7 +2031,7 @@ app.post("/api/planning/validate-day",auth,roles("Admin","Dispatcher"),async(req
       coalesce(sum(t.planned_minutes),0) planned_minutes,count(t.id)::int trip_count
       from users u left join driver_shifts s on s.driver_id=u.id and s.shift_date=$1
       left join trips t on t.driver_id=u.id and t.shift_date=$1
-      where u.role='Driver' group by u.id,u.name,s.start_at,s.end_at,s.break_minutes order by u.name`,[date]);
+      where u.role IN ('Driver','AdminDriver') group by u.id,u.name,s.start_at,s.end_at,s.break_minutes order by u.name`,[date]);
     const result=drivers.map(d=>{
       const warnings=[];
       if(!d.start_at||!d.end_at)warnings.push("Keine Schichtzeit hinterlegt");
@@ -2058,7 +2058,7 @@ app.post("/api/planning/auto-dispatch",auth,roles("Admin","Dispatcher"),async(re
       coalesce(o.time_window_start,'23:59') asc,o.delivery_city,o.id`,[date]);
     const drivers=await q(`select u.id,u.name,s.start_at,s.end_at,s.break_minutes
       from users u left join driver_shifts s on s.driver_id=u.id and s.shift_date=$1
-      where u.role='Driver' order by u.name`,[date]);
+      where u.role IN ('Driver','AdminDriver') order by u.name`,[date]);
     const vehicles=await q("select * from vehicles where active=true order by name limit 2");
     if(!vehicles.length)return res.status(400).json({error:"Keine aktiven Fahrzeuge"});
     const buckets=vehicles.map((v,i)=>({slot:i+1,vehicle:v,driver:drivers[i]||null,orders:[],weight:0,minutes:0}));
@@ -2308,7 +2308,7 @@ app.get("/api/sync/state",auth,async(req,res)=>{
       from trips t where t.updated_at>now()-interval '24 hours' and t.sync_version>$1 order by t.sync_version`,[since]);
     const stops=await q(`select s.id,s.trip_id,s.status,s.planned_sequence,s.eta_at,s.geofence_arrived_at,s.delivered_at,s.sync_version
       from trip_stops s where s.sync_version>$1 order by s.sync_version`,[since]);
-    const users=await q(`select id,name,last_seen_at from users where role='Driver'`);
+    const users=await q(`select id,name,last_seen_at from users where role IN ('Driver','AdminDriver')`);
     const max=Math.max(since,...trips.map(x=>Number(x.sync_version||0)),...stops.map(x=>Number(x.sync_version||0)));
     res.json({server_time:new Date().toISOString(),version:max,trips,stops,drivers:users});
   }catch(e){res.status(500).json({error:e.message});}
@@ -2821,7 +2821,7 @@ app.post("/api/workforce/validate-day",auth,roles("Admin","Dispatcher"),async(re
     const drivers=await q(`select u.id,u.name,ds.start_at,ds.end_at,ds.break_minutes,
       coalesce(ds.planned_minutes,0) planned_minutes
       from users u left join driver_shifts ds on ds.driver_id=u.id and ds.shift_date=$1
-      where u.role='Driver' and u.active=true order by u.name`,[date]);
+      where u.role IN ('Driver','AdminDriver') and u.active=true order by u.name`,[date]);
     const abs=await q(`select user_id,absence_type from employee_absences where start_date<= $1 and end_date>= $1 and status<>'cancelled'`,[date]);
     const absent=new Map(abs.map(x=>[x.user_id,x.absence_type]));
     const result=drivers.map(d=>{
@@ -3127,7 +3127,7 @@ app.post("/api/planning/auto-dispatch-orders",auth,roles("Admin","Dispatcher"),a
       and (o.requested_date is null or o.requested_date=$1)
       order by case o.priority when 'urgent' then 0 when 'high' then 1 else 2 end,o.time_window_start nulls last,o.created_at`,[date]));
     const vehicles=await q(`select * from vehicles where active=true order by name limit 2`);
-    const drivers=await q(`select * from users where role='Driver' and active=true order by name limit 2`);
+    const drivers=await q(`select * from users where role IN ('Driver','AdminDriver') and active=true order by name limit 2`);
     if(!vehicles.length || !drivers.length) return res.status(400).json({error:"Mindestens ein aktives Fahrzeug und Fahrer werden benötigt"});
     const slots=[0,1].map(i=>({vehicle:vehicles[i%vehicles.length],driver:drivers[i%drivers.length],orders:[],kg:0,minutes:0}));
     const skipped=[];
@@ -3795,7 +3795,7 @@ app.post("/api/flow/dispatch-order/:id",auth,roles("Admin","Dispatcher"),async(r
     let chosen=trips.find(t=>Number(t.stop_kg||0)+Number(o.weight_kg||0)<=1000);
     if(!chosen){
       const vehicles=await q(`select id,name,plate from vehicles where active=true order by name`);
-      const drivers=await q(`select id,name from users where role='Driver' and active=true order by name`);
+      const drivers=await q(`select id,name from users where role IN ('Driver','AdminDriver') and active=true order by name`);
       if(!vehicles.length||!drivers.length)return res.status(400).json({error:"Kein aktives Fahrzeug oder Fahrer verfügbar"});
       const slot=(await q(`select coalesce(max(dispatch_slot),0)+1 n from trips where planning_date=$1`,[date]))[0].n;
       chosen=(await q(`insert into trips(trip_number,planning_date,dispatch_slot,assigned_vehicle_slot,driver_id,vehicle_id,customer_id,weight_kg,status,priority,price_net,auto_planned)
@@ -3837,7 +3837,7 @@ app.get("/api/dispatch/pro-board",auth,roles("Admin","Dispatcher"),async(req,res
       group by t.id,v.name,v.plate,u.name order by coalesce(t.dispatch_slot,99),t.created_at`,[date]);
     const orders=await q(`select o.id,o.customer_reference,o.weight_kg,o.priority,o.delivery_address,o.status,c.company,o.planned_trip_id
       from orders o join customers c on c.id=o.customer_id where o.status='new' order by o.priority desc,o.created_at`);
-    const drivers=await q(`select id,name from users where role='Driver' and active=true order by name`);
+    const drivers=await q(`select id,name from users where role IN ('Driver','AdminDriver') and active=true order by name`);
     const vehicles=await q(`select id,name,plate from vehicles where active=true order by name`);
     const stops=await q(`select s.*,t.trip_number from trip_stops s join trips t on t.id=s.trip_id where t.planning_date=$1 order by s.trip_id,s.dispatch_position nulls last,s.stop_order`,[date]);
     res.json({date,trips:rows,orders,drivers,vehicles,stops})
