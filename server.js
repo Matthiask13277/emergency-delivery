@@ -654,7 +654,7 @@ app.patch("/api/company-settings",auth,roles("Admin"),async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message})}
 });
 
-app.post("/api/customers",auth,roles("Admin","Dispatcher"),async(req,res)=>{const r=await q("insert into customers(company,vat_id,address,city,email,phone) values($1,$2,$3,$4,$5,$6) returning *",[req.body.company,req.body.vatId,req.body.address,req.body.city,req.body.email,req.body.phone]);await audit(req,"CUSTOMER_CREATED",r[0].company);res.json(r[0])});
+app.post("/api/customers",auth,roles("Admin"),async(req,res)=>{const r=await q("insert into customers(company,vat_id,address,city,email,phone) values($1,$2,$3,$4,$5,$6) returning *",[req.body.company,req.body.vatId,req.body.address,req.body.city,req.body.email,req.body.phone]);await audit(req,"CUSTOMER_CREATED",r[0].company);res.json(r[0])});
 app.post("/api/trips",auth,roles("Admin","Dispatcher"),async(req,res)=>{
   try{
     const w=Number(req.body.weightKg)||0;if(w<0||w>1000)return res.status(400).json({error:"Gewicht muss zwischen 0 und 1.000 KG liegen"});
@@ -3670,7 +3670,7 @@ app.get("/api/customers/:id/360",auth,roles("Admin","Dispatcher","Accounting"),a
 
 
 // V65 customer management
-app.delete("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.delete("/api/customers/manage/:id",auth,roles("Admin"),async(req,res)=>{
   try{
     await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
     const r=await q("update customers set archived_at=coalesce(archived_at,now()) where id=$1 returning id,company,archived_at",[req.params.id]);
@@ -3679,7 +3679,7 @@ app.delete("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounti
     res.json({ok:true,archived:true,message:"Kunde wurde aus der aktiven Kundenliste entfernt. Aufträge, Touren und Rechnungen bleiben erhalten."});
   }catch(e){res.status(500).json({error:"Kunde konnte nicht archiviert werden."})}
 });
-app.get("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.get("/api/customers/manage",auth,roles("Admin"),async(req,res)=>{
   try{
     await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
     const archived=String(req.query.archived||"").toLowerCase()==="true"||req.query.archived==="1";
@@ -3690,7 +3690,7 @@ app.get("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),as
     res.json(rows)
   }catch(e){res.status(500).json({error:e.message})}
 });
-app.post("/api/customers/manage/:id/restore",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.post("/api/customers/manage/:id/restore",auth,roles("Admin"),async(req,res)=>{
   try{
     await q("ALTER TABLE customers ADD COLUMN IF NOT EXISTS archived_at timestamptz");
     const r=await q("update customers set archived_at=null where id=$1 and archived_at is not null returning id,company",[req.params.id]);
@@ -3699,7 +3699,7 @@ app.post("/api/customers/manage/:id/restore",auth,roles("Admin","Dispatcher","Ac
     res.json({ok:true,restored:true,message:"Kunde wurde wiederhergestellt."});
   }catch(e){res.status(500).json({error:"Kunde konnte nicht wiederhergestellt werden."})}
 });
-app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.post("/api/customers/manage",auth,roles("Admin"),async(req,res)=>{
   try{
     const b=req.body||{};
     if(!b.company)return res.status(400).json({error:"Firma erforderlich"});
@@ -3715,7 +3715,7 @@ app.post("/api/customers/manage",auth,roles("Admin","Dispatcher","Accounting"),a
     res.json(r[0])
   }catch(e){res.status(400).json({error:e.message})}
 });
-app.patch("/api/customers/manage/:id",auth,roles("Admin","Dispatcher","Accounting"),async(req,res)=>{
+app.patch("/api/customers/manage/:id",auth,roles("Admin"),async(req,res)=>{
   try{
     const b=req.body||{}, id=req.params.id;
     const r=await q(`update customers set
