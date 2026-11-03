@@ -111,6 +111,7 @@ async function ensureTripsPriorityColumn(){
   await q(`ALTER TABLE trips ADD COLUMN IF NOT EXISTS priority text DEFAULT 'normal'`);
 }
 async function ensureEmployeeTimeTrackingSchema(){
+  await ensureCompanySettings();
   await q(`CREATE TABLE IF NOT EXISTS employee_time_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(id),
