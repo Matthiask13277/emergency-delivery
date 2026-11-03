@@ -295,9 +295,13 @@ async function sendEmergencyPushTest(button){
   if(b){b.disabled=true;b.textContent="Sende Test…";}
   show("Verbindung zum Push-Server wird geprüft…");
   try{
-    const result=await api("/api/notifications/push-test",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+    const controller=new AbortController();
+    const timeoutId=setTimeout(()=>controller.abort(),20000);
+    let result;
+    try{result=await api("/api/notifications/push-test",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}",signal:controller.signal});}
+    finally{clearTimeout(timeoutId);}
     show("Serverantwort:\\n"+JSON.stringify(result,null,2)+(result.ok?"\\n\\nDer Push-Dienst hat die Nachricht angenommen.":"\\n\\nDer Push-Dienst konnte keine Nachricht zustellen."));
-  }catch(e){show("Push-Test fehlgeschlagen:\\n"+(e&&e.message?e.message:String(e)));}
+  }catch(e){const message=e&&e.name==="AbortError"?"Zeitüberschreitung: Der Server antwortet nicht innerhalb von 20 Sekunden.":(e&&e.message?e.message:String(e));show("Push-Test fehlgeschlagen:\\n"+message);}
   finally{if(b){b.disabled=false;b.textContent="Testnachricht senden";}}
 }
 async function offerPushSetup(){
