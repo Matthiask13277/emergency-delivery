@@ -1,0 +1,67 @@
+# Arbeitszeitverwaltung – Umsetzungsspezifikation
+
+Status: Umsetzungsvorgabe für den Branch `feature/arbeitszeitverwaltung-pc`.
+
+## Plattformgrenzen
+- Verwaltungsfunktionen ausschließlich in der PC-Oberfläche.
+- Mobile App bleibt bei der bisherigen Stempeluhr und persönlichen Einsicht.
+- Fahrer können ihre eigenen Zeiten und Monatsübersichten ansehen, bestätigen oder beanstanden; keine Bearbeitungsrechte.
+- PC und Handy verwenden denselben zentralen Datenbestand.
+
+## Rollen
+- `Admin` und `AdminDriver` haben identische vollständige Rechte für alle Mitarbeiter.
+- Beide dürfen Einträge nachtragen/korrigieren, Abwesenheiten und Stammdaten verwalten, Monatsabschlüsse freigeben/wieder öffnen und Exporte erstellen.
+- Fahrer dürfen ausschließlich eigene Daten lesen und Monatsübersichten bestätigen/beanstanden.
+
+## Zeiteinträge
+- Manuelles Nachtragen fehlender Tage sowie Korrektur von Beginn, Ende und Pausen.
+- Pflicht-Begründung bei manueller Änderung.
+- Historie mit Bearbeiter, Zeitstempel, altem/neuem Wert und Grund.
+- Keine stille Löschung; Storno bleibt nachvollziehbar.
+- Tages-Nettozeit = Ende minus Beginn minus Pausen; Zeitwerte intern in Minuten.
+
+## Arbeitszeitkonto
+- Individuelle Wochen-/Tages-Sollstunden und Arbeitstage pro Mitarbeiter.
+- Soll/Ist, Plus-/Minusstunden und laufender Saldo.
+- Freizeitausgleich und zur Auszahlung vorgemerkte Stunden getrennt führen; Vormerkung ist keine bestätigte Auszahlung.
+- Urlaub und Krankheit werden nach dem individuellen Tages-Soll angerechnet.
+- Urlaubsanspruch individuell; genommen, Rest und Übertrag separat führen.
+- Beschäftigungsperioden, Archivierung und Wiederaktivierung ohne Verlust der Historie.
+
+## Kalender und Abrechnung
+- Italienische nationale Feiertage und Südtirol-Einstellung; keine kommunalen Patronatsfeiertage.
+- Monats- und Jahresübersicht: Gesamtansicht aller Mitarbeiter plus Detailansicht je Mitarbeiter.
+- Jahresvergleich zweier Jahre.
+- Monatsabschluss mit Prüfung, Freigabe, Archivierung und kontrolliertem Wiederöffnen.
+- Jahresabschluss-Vorschau; Übertragungen erst nach ausdrücklicher Bestätigung.
+- Keine automatische Überstunden-Grenzwertwarnung.
+
+## Exporte
+- Echter XLSX-Export (nicht nur CSV) mit formatierter Gesamtübersicht und separaten Detail-/Kontoblättern.
+- Nettoarbeitszeit nach Pausenabzug; Summen je Mitarbeiter und Gesamtsumme.
+- PDF-Einzelabrechnungen und druckbare Übersichten.
+- Korrekturen, Abwesenheiten, Soll/Ist, Salden, Ausgleich und Auszahlungsvormerkungen transparent kennzeichnen.
+
+## Monatsbestätigung
+- Verwaltung stellt geprüfte Monatsübersicht bereit.
+- Fahrer erhalten Push-Erinnerung, sehen die eigene Übersicht mobil und bestätigen oder beanstanden sie.
+- Status und Zeitpunkte von Bereitstellung, Benachrichtigung, Bestätigung und Bearbeitung protokollieren.
+- Änderungen nach Bestätigung entwerten die Bestätigung und erfordern erneute Prüfung.
+
+## Sicherheit und Datenqualität
+- Serverseitige Rollenprüfung bei jedem schreibenden Endpunkt; UI-Ausblendung allein reicht nicht.
+- Transaktionale Änderungen, Idempotenz und Schutz vor doppelten Tagesdatensätzen.
+- Monatsabschlüsse und Audit-Historie vor stiller Änderung/Löschung schützen.
+- Plausibilitätsprüfungen zeigen Auffälligkeiten, verändern Daten aber nie automatisch.
+- Regelmäßige Backups und getestete Wiederherstellung.
+- Berechnungen zentral und einheitlich für PC, Handy, Excel und PDF.
+
+## Abnahmekriterien
+1. Admin und AdminDriver können identische Verwaltungsaktionen ausführen.
+2. Fahrer können mobil nur eigene Daten lesen, bestätigen oder beanstanden.
+3. PC-only Verwaltungsfunktionen sind in der Handy-Oberfläche nicht verfügbar.
+4. Manuelle Änderungen verlangen einen Grund und erzeugen Audit-Einträge.
+5. Tages-, Monats-, Jahres- und Team-Summen stimmen rechnerisch überein.
+6. XLSX enthält Nettozeiten, Mitarbeitersummen und Teamsumme.
+7. Urlaub, Krankheit und Feiertage beeinflussen Sollstunden gemäß den festgelegten Regeln.
+8. Monats-/Jahresabschluss, Wiederöffnung und Übertrag sind nachvollziehbar und bestätigt.
