@@ -138,6 +138,17 @@ async function ensureEmployeeTimeTrackingSchema(){
     updated_at timestamptz NOT NULL DEFAULT now()
   )`);
   await q(`ALTER TABLE employee_work_profiles ADD COLUMN IF NOT EXISTS work_days integer[] NOT NULL DEFAULT ARRAY[1,2,3,4,5]`);
+  await q(`CREATE TABLE IF NOT EXISTS employee_work_shifts(
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    shift_date date NOT NULL, start_at time NOT NULL, end_at time NOT NULL,
+    break_minutes integer NOT NULL DEFAULT 0 CHECK(break_minutes BETWEEN 0 AND 600),
+    note text NOT NULL DEFAULT '', created_by uuid REFERENCES users(id),
+    updated_by uuid REFERENCES users(id), created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CHECK(end_at>start_at)
+  )`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_employee_work_shifts_date ON employee_work_shifts(shift_date,user_id)`);
   await q(`CREATE TABLE IF NOT EXISTS employee_work_entries(
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL REFERENCES users(id),
     work_date date NOT NULL, start_at time NOT NULL, end_at time NOT NULL,
@@ -647,6 +658,39 @@ function worktimeMinutes(start,end,breakMinutes){const a=String(start||"").split
 async function worktimeMonthIsClosed(value){const iso=value instanceof Date?value.toISOString().slice(0,10):String(value||"").slice(0,10);const parts=iso.split("-");const year=Number(parts[0]),month=Number(parts[1]);if(!/^\d{4}-\d{2}-\d{2}$/.test(iso)||!Number.isInteger(year)||!Number.isInteger(month)||month<1||month>12)throw new Error("Ungültiges Arbeitsdatum für die Monatsabschluss-Prüfung.");return !!(await q("select 1 from employee_work_month_closures where year=$1 and month=$2 and status='closed'",[year,month])).length;}
 async function worktimeRangeTouchesClosed(from,to){return !!(await q("select 1 from employee_work_month_closures where status='closed' and (year*12+month) between (extract(year from $1::date)::int*12+extract(month from $1::date)::int) and (extract(year from $2::date)::int*12+extract(month from $2::date)::int) limit 1",[from,to])).length;}
 app.get("/api/worktime/admin/overview",auth,worktimeAdmin,async(req,res)=>{try{await ensureEmployeeWorktimeSchema();const from=req.query.from||new Date().toISOString().slice(0,8)+"01",to=req.query.to||new Date().toISOString().slice(0,10);const users=await q("select u.id,u.name,u.role,u.active,coalesce(p.weekly_target_minutes,2400) weekly_target_minutes,coalesce(p.daily_target_minutes,480) daily_target_minutes,coalesce(p.annual_leave_days,25) annual_leave_days,coalesce(p.region,'suedtirol') region,coalesce(p.work_days,ARRAY[1,2,3,4,5]) work_days from users u left join employee_work_profiles p on p.user_id=u.id where u.active=true order by u.name");const entries=await q("select e.*,u.name from employee_work_entries e join users u on u.id=e.user_id where e.work_date between $1::date and $2::date order by e.work_date,u.name,e.start_at",[from,to]);const absences=await q("select a.*,u.name from employee_work_absences a join users u on u.id=a.user_id where a.end_date >= $1::date and a.start_date <= $2::date order by a.start_date,u.name",[from,to]);const closures=await q("select * from employee_work_month_closures where (year,month) between (extract(year from $1::date)::int,extract(month from $1::date)::int) and (extract(year from $2::date)::int,extract(month from $2::date)::int)",[from,to]);res.json({from,to,users,entries,absences,closures});}catch(e){res.status(500).json({error:e.message});}});
+
+// Geplante Schichten bleiben strikt von tatsächlichen Stempelzeiten getrennt.
+app.get("/api/worktime/admin/shifts",auth,worktimeAdmin,async(req,res)=>{try{
+ await ensureEmployeeWorktimeSchema();
+ const from=String(req.query.from||""),to=String(req.query.to||"");
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||to<from)return res.status(400).json({error:"Bitte einen gültigen Wochenzeitraum angeben."});
+ const rows=await q("select s.*,u.name from employee_work_shifts s join users u on u.id=s.user_id where s.shift_date between $1::date and $2::date order by s.shift_date,u.name,s.start_at",[from,to]);
+ res.json({from,to,shifts:rows});
+ }catch(e){res.status(500).json({error:e.message});}});
+app.post("/api/worktime/admin/shifts",auth,worktimeAdmin,async(req,res)=>{try{
+ await ensureEmployeeWorktimeSchema();
+ const b=req.body||{},date=String(b.shift_date||""),start=String(b.start_at||""),end=String(b.end_at||""),br=Number(b.break_minutes||0);
+ if(!b.user_id||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||end<=start||!Number.isInteger(br)||br<0||br>600)return res.status(400).json({error:"Bitte Mitarbeiter, Datum, gültige Uhrzeiten und Pause angeben. Nachtschichten über Mitternacht bitte aufteilen."});
+ const employee=(await q("select id from users where id=$1 and active=true",[b.user_id]))[0];
+ if(!employee)return res.status(404).json({error:"Aktiver Mitarbeiter nicht gefunden."});
+ if(await worktimeMonthIsClosed(date))return res.status(409).json({error:"Der Monat ist abgeschlossen. Bitte zuerst kontrolliert wieder öffnen."});
+ const absence=(await q("select absence_type from employee_work_absences where user_id=$1 and start_date<=$2::date and end_date>=$2::date limit 1",[b.user_id,date]))[0];
+ if(absence)return res.status(409).json({error:"Für diesen Tag ist bereits eine Abwesenheit ("+absence.absence_type+") eingetragen."});
+ const overlap=(await q("select id from employee_work_shifts where user_id=$1 and shift_date=$2::date and start_at<$4::time and end_at>$3::time limit 1",[b.user_id,date,start,end])).length;
+ if(overlap)return res.status(409).json({error:"Diese Schicht überschneidet sich mit einer bereits geplanten Schicht."});
+ const row=(await q("insert into employee_work_shifts(user_id,shift_date,start_at,end_at,break_minutes,note,created_by,updated_by) values($1,$2,$3,$4,$5,$6,$7,$7) returning *",[b.user_id,date,start,end,br,String(b.note||"").trim().slice(0,500),req.user.id]))[0];
+ await audit(req,"WORKTIME_SHIFT_CREATED",row.id+" / "+b.user_id+" / "+date);
+ res.status(201).json(row);
+ }catch(e){res.status(500).json({error:e.message});}});
+app.delete("/api/worktime/admin/shifts/:id",auth,worktimeAdmin,async(req,res)=>{try{
+ await ensureEmployeeWorktimeSchema();
+ const row=(await q("select * from employee_work_shifts where id=$1",[req.params.id]))[0];
+ if(!row)return res.status(404).json({error:"Schicht nicht gefunden."});
+ if(await worktimeMonthIsClosed(row.shift_date))return res.status(409).json({error:"Der Monat ist abgeschlossen. Bitte zuerst kontrolliert wieder öffnen."});
+ await q("delete from employee_work_shifts where id=$1",[req.params.id]);
+ await audit(req,"WORKTIME_SHIFT_DELETED",row.id+" / "+row.user_id+" / "+row.shift_date);
+ res.json({ok:true});
+ }catch(e){res.status(500).json({error:e.message});}});
 app.post("/api/worktime/admin/entries",auth,worktimeAdmin,async(req,res)=>{try{await ensureEmployeeWorktimeSchema();const b=req.body||{};if(!b.user_id||!/^\d{4}-\d{2}-\d{2}$/.test(String(b.work_date||""))||!b.start_at||!b.end_at||!String(b.note||"").trim())return res.status(400).json({error:"Mitarbeiter, Datum, Beginn, Ende und Änderungsgrund sind Pflicht."});if(await worktimeMonthIsClosed(b.work_date))return res.status(409).json({error:"Der Monat ist abgeschlossen. Bitte zuerst kontrolliert wieder öffnen."});const br=b.break_minutes===undefined||b.break_minutes===null||b.break_minutes===""?0:Number(b.break_minutes),mins=worktimeMinutes(b.start_at,b.end_at,br);if(!Number.isFinite(br)||!Number.isInteger(br)||br<0||br>600||!/^\d{2}:\d{2}$/.test(String(b.start_at))||!/^\d{2}:\d{2}$/.test(String(b.end_at))||mins<=0)return res.status(400).json({error:"Bitte gültige Uhrzeiten und eine Pause zwischen 0 und 600 Minuten eingeben."});const r=await q("insert into employee_work_entries(user_id,work_date,start_at,end_at,break_minutes,note,created_by,updated_by) values($1,$2,$3,$4,$5,$6,$7,$7) returning *",[b.user_id,b.work_date,b.start_at,b.end_at,br,String(b.note).trim().slice(0,1000),req.user.id]);await audit(req,"WORKTIME_ENTRY_CREATED",r[0].id+" / "+b.user_id+" / "+b.work_date);res.status(201).json(r[0]);}catch(e){res.status(500).json({error:e.message});}});
 app.patch("/api/worktime/admin/entries/:id",auth,worktimeAdmin,async(req,res)=>{try{await ensureEmployeeWorktimeSchema();const old=(await q("select * from employee_work_entries where id=$1",[req.params.id]))[0];if(!old)return res.status(404).json({error:"Eintrag nicht gefunden."});if(await worktimeMonthIsClosed(old.work_date))return res.status(409).json({error:"Der Monat ist abgeschlossen. Bitte zuerst kontrolliert wieder öffnen."});const b=req.body||{},start=b.start_at??old.start_at,end=b.end_at??old.end_at,br=b.break_minutes===undefined||b.break_minutes===null||b.break_minutes===""?old.break_minutes:Number(b.break_minutes),note=String(b.note??"").trim();if(!note)return res.status(400).json({error:"Ein Änderungsgrund ist Pflicht."});if(!Number.isFinite(br)||!Number.isInteger(br)||br<0||br>600||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(start))||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(end))||worktimeMinutes(start,end,br)<=0)return res.status(400).json({error:"Ungültige Arbeitszeit oder Pause. Bitte Uhrzeiten im Format HH:MM und Pause von 0 bis 600 Minuten angeben."});const r=await q("update employee_work_entries set start_at=$1,end_at=$2,break_minutes=$3,note=$4,status='pending',confirmed_at=null,updated_by=$5,updated_at=now() where id=$6 returning *",[start,end,br,note.slice(0,1000),req.user.id,req.params.id]);await audit(req,"WORKTIME_ENTRY_CHANGED",JSON.stringify({id:old.id,before:{start_at:old.start_at,end_at:old.end_at,break_minutes:old.break_minutes,note:old.note},after:{start_at:start,end_at:end,break_minutes:br,note}}));res.json(r[0]);}catch(e){res.status(500).json({error:e.message});}});
 app.post("/api/worktime/admin/absences",auth,worktimeAdmin,async(req,res)=>{try{await ensureEmployeeWorktimeSchema();const b=req.body||{};if(!b.user_id||!b.start_date||!b.end_date||!["vacation","sick","comp_time"].includes(b.absence_type)||b.end_date<b.start_date)return res.status(400).json({error:"Bitte Mitarbeiter, gültigen Zeitraum und Abwesenheitsart angeben."});if(await worktimeRangeTouchesClosed(b.start_date,b.end_date))return res.status(409).json({error:"Der Zeitraum berührt einen abgeschlossenen Monat."});const overlap=await q("select id,absence_type,start_date,end_date from employee_work_absences where user_id=$1 and start_date<=$3::date and end_date>=$2::date limit 1",[b.user_id,b.start_date,b.end_date]);if(overlap.length)return res.status(409).json({error:"Der Zeitraum überschneidet sich mit einer bereits erfassten Abwesenheit ("+overlap[0].absence_type+" vom "+overlap[0].start_date+" bis "+overlap[0].end_date+"). Bitte vorhandenen Eintrag prüfen, statt Tage doppelt zu erfassen."});const r=await q("insert into employee_work_absences(user_id,start_date,end_date,absence_type,note,created_by) values($1,$2,$3,$4,$5,$6) returning *",[b.user_id,b.start_date,b.end_date,b.absence_type,String(b.note||"").slice(0,1000),req.user.id]);await audit(req,"WORKTIME_ABSENCE_CREATED",r[0].id+" / "+b.absence_type);res.status(201).json(r[0]);}catch(e){res.status(500).json({error:e.message});}});
