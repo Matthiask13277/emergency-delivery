@@ -4351,6 +4351,14 @@ app.post("/api/notifications/push-subscription",auth,roles("Admin","Dispatcher",
     res.json({ok:true})
   }catch(e){res.status(400).json({error:e.message})}
 });
+app.delete("/api/notifications/push-subscription",auth,roles("Admin","AdminDriver","Dispatcher","Driver","Accounting"),async(req,res)=>{
+  try{
+    const endpoint=String(req.body?.endpoint||"");
+    if(!endpoint)return res.status(400).json({error:"Push-Endpunkt fehlt."});
+    await q("delete from push_subscriptions where user_id=$1 and endpoint=$2",[req.user.id,endpoint]);
+    res.json({ok:true});
+  }catch(e){res.status(400).json({error:e.message});}
+});
 app.get("/api/notifications/vapid-public-key",auth,roles("Admin","Dispatcher","Driver","Accounting"),async(req,res)=>{
   res.json({publicKey:process.env.VAPID_PUBLIC_KEY||""})
 });
