@@ -114,24 +114,9 @@ async function ensureTripsPriorityColumn(){
 // Preserve every role already present, and add the application's supported roles.
 // The DO block runs atomically and changes only the users.role CHECK constraint.
 async function ensureUserRoleConstraint(){
-  await q(`DO $
-  DECLARE allowed_roles text;
-  BEGIN
-    SELECT string_agg(quote_literal(role), ', ')
-      INTO allowed_roles
-      FROM (
-        SELECT DISTINCT role FROM users WHERE role IS NOT NULL
-        UNION
-        SELECT unnest(ARRAY['Admin','Dispatcher','Driver','Accounting','AdminDriver'])
-      ) AS roles;
-    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-    EXECUTE format(
-      'ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN (%s))',
-      allowed_roles
-    );
-  END $;`);
+  await q(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
+  await q(`ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('Admin','Dispatcher','Driver','Accounting','AdminDriver'))`);
 }
-
 // Keep delivery-proof and geofence fields used by the driver APIs compatible with PostgreSQL.
 // Each statement is idempotent so startup can safely retry after a database reconnect.
 async function ensureTripSignatureColumns(){
