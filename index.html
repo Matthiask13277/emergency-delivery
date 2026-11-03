@@ -550,7 +550,7 @@ if(p==="driver"){
 }
 if(p==="customers"){
   c.innerHTML=`<div class="page-head"><div><div class="eyebrow">STAMMDATEN</div><h2>Kunden & Kundenakte</h2><p class="muted">Stammdaten, Ansprechpartner, Lieferhinweise, Aufträge, Lieferscheine und Rechnungen an einer Stelle.</p></div><button class="btn primary" onclick="openCustomer()">+ Kunde hinzufügen</button></div>
-  <div class="panel"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button id="customerActiveTab" class="btn primary" onclick="loadCustomersManage('active')">Aktive Kunden</button><button id="customerArchivedTab" class="btn secondary" onclick="loadCustomersManage('archived')">Archivierte Kunden</button></div><div id="customerList">Lade Kunden…</div></div>
+  <div class="panel"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button id="customerActiveTab" class="btn primary" onclick="loadCustomersManage('active')">Aktive Kunden</button></div><div id="customerList">Lade Kunden…</div></div>
   <div id="customerFileBox" class="panel"><p class="muted">Klicke bei einem Kunden auf „Akte“, um alle Details zu sehen.</p></div>`;
   loadCustomersManage(); return;
 }
