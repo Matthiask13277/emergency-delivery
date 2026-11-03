@@ -288,11 +288,16 @@ async function renewEmergencyPush(){
 }
 async function sendEmergencyPushTest(button){
   const b=button||null;
+  const panel=b&&b.closest(".panel");
+  let status=panel&&panel.querySelector("#pushTestStatus");
+  if(panel&&!status){status=document.createElement("p");status.id="pushTestStatus";status.setAttribute("role","status");status.setAttribute("aria-live","polite");status.style.cssText="margin:12px 0 0;padding:10px;border-radius:8px;background:#f3f4f6;color:#172033;white-space:pre-wrap";panel.appendChild(status);}
+  const show=(message)=>{if(status)status.textContent=message;else alert(message);};
   if(b){b.disabled=true;b.textContent="Sende Test…";}
+  show("Verbindung zum Push-Server wird geprüft…");
   try{
     const result=await api("/api/notifications/push-test",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
-    alert("Push-Test: "+JSON.stringify(result));
-  }catch(e){alert("Push-Test fehlgeschlagen: "+(e.message||String(e)));}
+    show("Serverantwort:\\n"+JSON.stringify(result,null,2)+(result.ok?"\\n\\nDer Push-Dienst hat die Nachricht angenommen.":"\\n\\nDer Push-Dienst konnte keine Nachricht zustellen."));
+  }catch(e){show("Push-Test fehlgeschlagen:\\n"+(e&&e.message?e.message:String(e)));}
   finally{if(b){b.disabled=false;b.textContent="Testnachricht senden";}}
 }
 async function offerPushSetup(){
