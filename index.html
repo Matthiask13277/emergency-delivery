@@ -273,7 +273,7 @@ async function enableEmergencyPush(){
     console.error("[Emergency Delivery Push]",stage,e);
   }
 }
-async async function sendEmergencyPushTest(button){
+async function sendEmergencyPushTest(button){
   const b=button||null;
   if(b){b.disabled=true;b.textContent="Sende Test…";}
   try{
@@ -282,7 +282,7 @@ async async function sendEmergencyPushTest(button){
   }catch(e){alert("Push-Test fehlgeschlagen: "+(e.message||String(e)));}
   finally{if(b){b.disabled=false;b.textContent="Testnachricht senden";}}
 }
-function offerPushSetup(){
+async function offerPushSetup(){
   if(!T||!window.currentUser||sessionStorage.getItem("ed_push_prompt_dismissed")==="1")return;
   if(!("Notification" in window)||!("serviceWorker" in navigator)||!("PushManager" in window))return;
   if(Notification.permission==="denied")return;
