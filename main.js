@@ -67,7 +67,7 @@ async function createWindow(){
   catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.2.2 – Startfehler",
+      title:"Emergency Delivery Desktop 2.2.3 – Startfehler",
       message:e.message,
       detail:"Die lokale Datenbank konnte nicht initialisiert werden."
     });
@@ -76,7 +76,7 @@ async function createWindow(){
   }
 
   const win=new BrowserWindow({
-    title:"Emergency Delivery CURRENT 2.2.2",
+    title:"Emergency Delivery CURRENT 2.2.3",
     width:1440,
     height:900,
     minWidth:1100,
@@ -86,7 +86,7 @@ async function createWindow(){
     webPreferences:{
       contextIsolation:true,
       nodeIntegration:false,
-      partition:"persist:desktop-current-v222"
+      partition:"persist:desktop-current-v223"
     }
   });
 
@@ -132,7 +132,7 @@ async function createWindow(){
   }catch(e){
     await dialog.showMessageBox({
       type:"error",
-      title:"Emergency Delivery Desktop 2.2.2 – Ladefehler",
+      title:"Emergency Delivery Desktop 2.2.3 – Ladefehler",
       message:"Die Desktop-Oberfläche konnte nicht geladen werden.",
       detail:String(e.stack||e)
     });

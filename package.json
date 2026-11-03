@@ -1,6 +1,6 @@
 {
   "name": "emergency-delivery-desktop",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -42,10 +42,10 @@
           ]
         }
       ],
-      "artifactName": "ED-CURRENT-DESKTOP-2.2.2-Portable.${ext}"
+      "artifactName": "ED-CURRENT-DESKTOP-2.2.3-Portable.${ext}"
     },
     "asar": true,
-    "artifactName": "ED-CURRENT-DESKTOP-2.2.2.${ext}",
+    "artifactName": "ED-CURRENT-DESKTOP-2.2.3.${ext}",
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -54,7 +54,7 @@
       "shortcutName": "Emergency Delivery",
       "uninstallDisplayName": "Emergency Delivery",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "ED-CURRENT-DESKTOP-2.2.2-Setup.${ext}"
+      "artifactName": "ED-CURRENT-DESKTOP-2.2.3-Setup.${ext}"
     }
   },
   "dependencies": {
