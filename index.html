@@ -1194,7 +1194,8 @@ if ("serviceWorker" in navigator) {
       "Fahrer-App":"driver",
       "Mein Konto":"account",
       "Datenbank prüfen":"company",
-      "Kunden":"customers"
+      "Kunden":"customers",
+      "Zeiterfassung":"timeclock"
     };
     const page=routes[label];
     if(page && typeof window.view==="function"){
@@ -1215,7 +1216,7 @@ if ("serviceWorker" in navigator) {
       (isDriver?'<button data-go="Fahrer-App">🚚<br>Fahrten</button>':'<button data-go="Auftrag+">▣<br>Auftrag+</button>')+
       (isDriver?'<button data-go="Kalender">□<br>Kalender</button>':'<button data-go="Lieferscheine">▤<br>Liefers.</button><button data-go="Rechnungen">€<br>Rechn.</button>')+
       (isAdmin?'<button data-go="Kunden">♙<br>Kunden</button>':'')+
-      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':(isAdmin?'<button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button><button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>'))+
+      (isDriver?'<button data-go="Mein Konto">●<br>Konto</button>':(isAdmin?'<button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>':'<button data-go="Fahrer-App">🚚<br>Fahrten</button><button data-go="Kalender">□<br>Kalender</button><button data-go="Mein Konto">●<br>Konto</button>'))+'<button data-go="Zeiterfassung">◷<br>Zeit</button>'+
       (isAdmin?'<button data-go="Datenbank prüfen">⚙<br>Prüfen</button>':'');
     if(n.innerHTML!==html){
       n.innerHTML=html;
