@@ -4330,16 +4330,20 @@ app.post("/api/notifications/push-test",auth,roles("Admin","Dispatcher","Driver"
 
 // V81 actual web push sender
 async function v81SendPush(title,body,data={}){
+  // Send every push type to all active employees with a registered device.
   try{
     const webpush=require("web-push");
     const pub=process.env.VAPID_PUBLIC_KEY||"",priv=process.env.VAPID_PRIVATE_KEY||"",subject=process.env.VAPID_SUBJECT||"mailto:admin@example.com";
     if(!pub||!priv)return {sent:0,disabled:true};
     webpush.setVapidDetails(subject,pub,priv);
-    const subs=await q(`select * from push_subscriptions where user_id in (select id from users where role in('Admin','Dispatcher') and active=true)`);
+    const subs=await q(`select ps.* from push_subscriptions ps join users u on u.id=ps.user_id where u.active=true`);
     let sent=0;
     for(const sub of subs){
       try{await webpush.sendNotification(JSON.parse(sub.subscription_json),JSON.stringify({title,body,data,tag:"emergency-delivery-alert"}));sent++}
-      catch(e){if(e.statusCode===404||e.statusCode===410)await q(`delete from push_subscriptions where id=$1`,[sub.id])}
+      catch(e){
+        if(e.statusCode===404||e.statusCode===410)await q(`delete from push_subscriptions where id=$1`,[sub.id]);
+        else console.warn("Push recipient failed:",e.statusCode||e.message);
+      }
     }
     return {sent,disabled:false}
   }catch(e){console.error("V81 push:",e.message);return {sent:0,error:e.message}}
