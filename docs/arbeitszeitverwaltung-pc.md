@@ -21,6 +21,8 @@ Status: Umsetzungsvorgabe für den Branch `feature/arbeitszeitverwaltung-pc`.
 - Tages-Nettozeit = Ende minus Beginn minus Pausen; Zeitwerte intern in Minuten.
 
 ## Arbeitszeitkonto
+- Reguläre Arbeitstage sind je Mitarbeiter konfigurierbar (Montag bis Sonntag); Standard bleibt Montag bis Freitag.
+- Die Sollzeitberechnung und die Anrechnung von Abwesenheitstagen berücksichtigen nur die konfigurierten Arbeitstage und gesetzliche Feiertage.
 - Individuelle Wochen-/Tages-Sollstunden und Arbeitstage pro Mitarbeiter.
 - Soll/Ist, Plus-/Minusstunden und laufender Saldo.
 - Freizeitausgleich und zur Auszahlung vorgemerkte Stunden getrennt führen; Vormerkung ist keine bestätigte Auszahlung.
