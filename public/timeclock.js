@@ -7,8 +7,7 @@
     var role=window.S&&S.user?S.user.role:"";
     var clock=["Driver","AdminDriver","Dispatcher","Accounting"].includes(role);
     var report=["Admin","AdminDriver"].includes(role);
-    var c=document.getElementById("content")||document.querySelector("main .wrap");
-    if(!c)c=document.querySelector(".main .wrap");
+    var c=document.getElementById("c");
     if(!c)return;
     c.innerHTML='<div class="page-head"><h2>Zeiterfassung</h2><p class="muted">Arbeitszeiten erfassen – ohne Standortdaten.</p></div>'+
       (clock?'<div class="panel"><h3>Meine Stempeluhr</h3><div id="clockStatus">Lade…</div><div class="row"><button id="clockInBtn" class="btn primary" onclick="submitTimeClock(\'in\')">Einstempeln</button><button id="clockOutBtn" class="btn secondary" onclick="submitTimeClock(\'out\')">Ausstempeln</button></div><div id="myTimeHistory"></div></div>':'')+
