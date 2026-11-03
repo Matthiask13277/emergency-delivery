@@ -4305,7 +4305,7 @@ app.get("/api/notifications/vapid-public-key",auth,roles("Admin","Dispatcher","D
 
 
 // Push delivery diagnostics: send a test notification to the currently logged-in device.
-app.post("/api/notifications/push-test",auth,roles("Admin","Dispatcher","Driver","Accounting"),async(req,res)=>{
+app.post("/api/notifications/push-test",auth,roles("Admin","AdminDriver","Dispatcher","Driver","Accounting"),async(req,res)=>{
   try{
     const rows=await q("select id,subscription_json from push_subscriptions where user_id=$1 order by last_seen_at desc",[req.user.id]);
     if(!rows.length)return res.status(404).json({ok:false,error:"Für diesen Benutzer ist kein Push-Abonnement gespeichert. Bitte Push auf diesem Gerät erneut aktivieren."});
