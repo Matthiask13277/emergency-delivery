@@ -65,3 +65,26 @@ Status: Umsetzungsvorgabe für den Branch `feature/arbeitszeitverwaltung-pc`.
 6. XLSX enthält Nettozeiten, Mitarbeitersummen und Teamsumme.
 7. Urlaub, Krankheit und Feiertage beeinflussen Sollstunden gemäß den festgelegten Regeln.
 8. Monats-/Jahresabschluss, Wiederöffnung und Übertrag sind nachvollziehbar und bestätigt.
+
+
+## Implementierungsstand im Feature-Branch
+
+Bereits angelegt:
+- Serverseitige Tabellen für Mitarbeiterprofile, Arbeitszeiteinträge, Abwesenheiten und Monatsabschlüsse.
+- Admin-/AdminDriver-Endpunkte für Übersicht, Nachträge, Korrekturen, Abwesenheiten, Sollstundenprofile sowie Abschluss/Wiederöffnung.
+- Eigene Lese- und Bestätigungs-/Beanstandungsendpunkte für angemeldete Mitarbeiter.
+- PC-Verwaltungsoberfläche in der Web- und Desktop-App; Mobilansicht blendet die Administration aus.
+- Mobile persönliche Übersicht mit Bestätigen/Beanstanden.
+- Berechnung von Nettozeit, Werktags-Soll, Abwesenheitsgutschrift und Saldo.
+- Feiertagsliste für die italienischen gesetzlichen Feiertage einschließlich Ostermontag; keine Patronatsfeiertage.
+- Excel-kompatibler SpreadsheetML-Export (.xls) mit Mitarbeiter- und Gesamtsummen sowie Druckansicht für PDF.
+
+Noch offen vor Produktivfreigabe:
+- Moderner .xlsx-Export statt Excel-kompatiblem .xls.
+- Vollständiger Urlaubsjahresübertrag mit nachvollziehbarer Genehmigung.
+- Push-Erinnerungen zur Monatsbestätigung.
+- Umfassende Browser-/Backend-Tests, Migrationstest auf einer Kopie der Produktivdatenbank und fachliche Abnahme der Südtirol-Feiertagsregeln.
+- Jahresabschluss-Workflow und kontrollierte Wiederöffnung mit vollständigem Prüfprotokoll.
+- Integration mit bestehenden Personal-/Abwesenheitsdaten, falls diese bereits produktiv gepflegt werden.
+
+Der Branch ist nicht in den Hauptbranch gemergt und nicht live geschaltet.
