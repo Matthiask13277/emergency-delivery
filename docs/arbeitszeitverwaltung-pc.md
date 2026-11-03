@@ -81,10 +81,17 @@ Bereits angelegt:
 
 Noch offen vor Produktivfreigabe:
 - Moderner .xlsx-Export statt Excel-kompatiblem .xls.
-- Vollständiger Urlaubsjahresübertrag mit nachvollziehbarer Genehmigung.
+- Vollständiger Urlaubsjahresübertrag mit nachvollziehbarer Genehmigung (Basis-Ledger und Admin-Freigabe sind jetzt ergänzt; Resturlaubsverbrauch, automatische Berechnung und Jahresabschluss-Verknüpfung sind noch offen).
 - Push-Erinnerungen zur Monatsbestätigung.
 - Umfassende Browser-/Backend-Tests, Migrationstest auf einer Kopie der Produktivdatenbank und fachliche Abnahme der Südtirol-Feiertagsregeln.
 - Jahresabschluss-Workflow und kontrollierte Wiederöffnung mit vollständigem Prüfprotokoll.
 - Integration mit bestehenden Personal-/Abwesenheitsdaten, falls diese bereits produktiv gepflegt werden.
 
 Der Branch ist nicht in den Hauptbranch gemergt und nicht live geschaltet.
+
+
+### Ergänzung: Urlaubsübertrag
+- Pro Mitarbeiter und Kalenderjahr wird ein eigener Datensatz für Anspruch und genehmigten Übertrag geführt.
+- Admin und AdminDriver können einen Übertrag mit Pflichtbegründung ausdrücklich genehmigen; Genehmiger, Zeitpunkt und Begründung werden gespeichert und auditiert.
+- PC-Oberfläche zeigt Anspruch, Übertrag und Genehmigungsstatus je Mitarbeiter.
+- Noch nicht enthalten: automatische Berechnung des Resturlaubs aus genommenen Tagen sowie die verbindliche Jahresabschluss-Freigabe.
