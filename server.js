@@ -4366,6 +4366,11 @@ app.get("/api/notifications/vapid-public-key",auth,roles("Admin","Dispatcher","D
 
 // Push delivery diagnostics: send a test notification to the currently logged-in device.
 app.post("/api/notifications/push-test",auth,roles("Admin","AdminDriver","Dispatcher","Driver","Accounting"),async(req,res)=>{
+  let responseDeadline=false;
+  const responseTimer=setTimeout(()=>{
+    responseDeadline=true;
+    if(!res.headersSent)res.status(504).json({ok:false,error:"Server-Zeitüberschreitung: Push-Test konnte nicht rechtzeitig abgeschlossen werden."});
+  },15000);
   try{
     const rows=await q("select id,subscription_json from push_subscriptions where user_id=$1 order by last_seen_at desc",[req.user.id]);
     if(!rows.length)return res.status(404).json({ok:false,error:"Für diesen Benutzer ist kein Push-Abonnement gespeichert. Bitte Push auf diesem Gerät erneut aktivieren."});
@@ -4376,7 +4381,10 @@ app.post("/api/notifications/push-test",auth,roles("Admin","AdminDriver","Dispat
     let sent=0;const failures=[];
     for(const row of rows){
       try{
-        await webpush.sendNotification(JSON.parse(row.subscription_json),JSON.stringify({title:"Emergency Delivery – Test",body:"Push-Zustellung funktioniert auf diesem Gerät.",data:{type:"push_test"},tag:"ed-push-test-"+Date.now()}));
+        await Promise.race([
+          webpush.sendNotification(JSON.parse(row.subscription_json),JSON.stringify({title:"Emergency Delivery – Test",body:"Push-Zustellung funktioniert auf diesem Gerät.",data:{type:"push_test"},tag:"ed-push-test-"+Date.now()})),
+          new Promise((_,reject)=>setTimeout(()=>reject(Object.assign(new Error("Push-Dienst antwortet nicht innerhalb von 10 Sekunden."),{code:"PUSH_TIMEOUT"})),10000))
+        ]);
         sent++;
       }catch(e){
         failures.push({statusCode:e.statusCode||null,message:String(e.message||e).slice(0,240)});
@@ -4385,7 +4393,8 @@ app.post("/api/notifications/push-test",auth,roles("Admin","AdminDriver","Dispat
     }
     console.log("Push test result",JSON.stringify({userId:req.user.id,subscriptions:rows.length,sent,failures}));
     res.json({ok:sent>0,subscriptions:rows.length,sent,failures});
-  }catch(e){console.error("Push test endpoint:",e);res.status(500).json({ok:false,error:e.message})}
+  }catch(e){console.error("Push test endpoint:",e);if(!res.headersSent)res.status(500).json({ok:false,error:e.message})}
+  finally{clearTimeout(responseTimer);}
 });
 
 // V81 actual web push sender
