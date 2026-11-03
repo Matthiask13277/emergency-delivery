@@ -560,11 +560,14 @@ app.post("/api/time-clock/out",auth,async(req,res)=>{
     const open=(await q(`select id,clock_in_at from employee_time_entries where user_id=$1 and clock_out_at is null order by clock_in_at desc limit 1`,[req.user.id]))[0];
     if(!open)return res.status(409).json({error:"Du bist derzeit nicht eingestempelt."});
     const grossMinutes=Math.max(0,Math.round((Date.now()-new Date(open.clock_in_at).getTime())/60000));
-    const autoBreak=grossMinutes>360?30:0;
+    const cfg=(await q("select time_break_threshold_minutes,time_break_deduction_minutes from company_settings where id=1"))[0]||{time_break_threshold_minutes:360,time_break_deduction_minutes:30};
+    const autoBreak=grossMinutes>Number(cfg.time_break_threshold_minutes||360)?Number(cfg.time_break_deduction_minutes||30):0;
     const r=(await q(`update employee_time_entries set clock_out_at=now(),auto_break_minutes=$1 where id=$2 and user_id=$3 and clock_out_at is null returning id,clock_in_at,clock_out_at,auto_break_minutes`,[autoBreak,open.id,req.user.id]))[0];
     await audit(req,"TIME_CLOCK_OUT",`Ausgestempelt; ${grossMinutes} Min. Anwesenheit, ${autoBreak} Min. automatische Pause`);res.json(r);
   }catch(e){res.status(500).json({error:e.message});}
 });
+app.get("/api/time-clock/settings",auth,roles("Admin","AdminDriver"),async(req,res)=>{try{const r=(await q("select time_break_threshold_minutes,time_break_deduction_minutes from company_settings where id=1"))[0]||{};res.json({threshold_minutes:r.time_break_threshold_minutes??360,deduction_minutes:r.time_break_deduction_minutes??30});}catch(e){res.status(500).json({error:e.message});}});
+app.patch("/api/time-clock/settings",auth,roles("Admin","AdminDriver"),async(req,res)=>{try{const threshold=Number(req.body?.threshold_minutes),deduction=Number(req.body?.deduction_minutes);if(!Number.isInteger(threshold)||threshold<1||threshold>1440||!Number.isInteger(deduction)||deduction<0||deduction>240)return res.status(400).json({error:"Bitte gültige Minutenwerte eingeben."});await q("update company_settings set time_break_threshold_minutes=$1,time_break_deduction_minutes=$2,updated_at=now() where id=1",[threshold,deduction]);await audit(req,"TIME_CLOCK_SETTINGS_UPDATED",threshold+" / "+deduction);res.json({threshold_minutes:threshold,deduction_minutes:deduction});}catch(e){res.status(500).json({error:e.message});}});
 app.get("/api/time-clock/report",auth,roles("Admin","AdminDriver"),async(req,res)=>{
   try{const from=req.query.from||new Date(Date.now()-30*86400000).toISOString().slice(0,10),to=req.query.to||new Date().toISOString().slice(0,10);
     const rows=await q(`select e.id,e.user_id,u.name,u.role,e.clock_in_at,e.clock_out_at,e.auto_break_minutes,case when e.clock_out_at is null then null else greatest(0,round(extract(epoch from (e.clock_out_at-e.clock_in_at))/60)::int-e.auto_break_minutes) end net_minutes from employee_time_entries e join users u on u.id=e.user_id where e.clock_in_at >= $1::date and e.clock_in_at < ($2::date + interval '1 day') order by e.clock_in_at desc`,[from,to]);
