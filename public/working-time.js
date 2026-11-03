@@ -2,7 +2,7 @@
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const mins=v=>{const n=Number(v||0);return Math.floor(n/60)+" Std. "+String(n%60).padStart(2,"0")+" Min.";};
-  const today=()=>new Date().toISOString().slice(0,10);
+  const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");};
   const monthStart=()=>today().slice(0,8)+"01";
   let data={users:[],entries:[],absences:[],closures:[]};
   function admin(){return ["Admin","AdminDriver"].includes(typeof S!=="undefined"?(S?.user?.role||""):"");}
