@@ -4,14 +4,15 @@
   function fmt(v){return v?new Date(v).toLocaleString("de-DE"):"—";}
   function hours(m){return m==null?"—":Math.floor(m/60)+" Std. "+String(m%60).padStart(2,"0")+" Min.";}
   window.renderTimeClockPage=function(){
-    var role=window.S&&S.user?S.user.role:"";
-    var clock=["Driver","AdminDriver","Dispatcher","Accounting"].includes(role);
-    var report=["Admin","AdminDriver"].includes(role);
+    var rawRole=(window.S&&S.user&&S.user.role)||(window.currentUser&&window.currentUser.role)||(window.appState&&window.appState.user&&window.appState.user.role)||"";
+    var role=String(rawRole).trim().toLowerCase();
+    var clock=["driver","admindriver","dispatcher","accounting","fahrer"].includes(role);
+    var report=["admin","administrator","admindriver","verwalter"].includes(role);
     var c=document.getElementById("c");
     if(!c)return;
     c.innerHTML='<div class="page-head"><h2>Zeiterfassung</h2><p class="muted">Arbeitszeiten erfassen – ohne Standortdaten.</p></div>'+
       (clock?'<div class="panel"><h3>Meine Stempeluhr</h3><div id="clockStatus">Lade…</div><div class="row"><button id="clockInBtn" class="btn primary" onclick="submitTimeClock(\'in\')">Einstempeln</button><button id="clockOutBtn" class="btn secondary" onclick="submitTimeClock(\'out\')">Ausstempeln</button></div><div id="myTimeHistory"></div></div>':'')+
-      (report?'<div class="panel"><h3>Mitarbeiter-Auswertung</h3><div class="form form-2"><label>Von <input id="timeFrom" type="date"></label><label>Bis <input id="timeTo" type="date"></label></div><div class="row"><button class="btn primary" onclick="loadTimeReport()">Auswertung laden</button><button class="btn secondary" onclick="exportTimeReport()">CSV exportieren</button></div><div id="timeReport"></div><hr><h3>Automatische Pause</h3><div class="form form-2"><label>Ab Arbeitszeit (Minuten)<input id="timeBreakThreshold" type="number" min="1" max="1440"></label><label>Pause abziehen (Minuten)<input id="timeBreakDeduction" type="number" min="0" max="240"></label></div><button class="btn primary" onclick="saveTimeSettings()">Pausenregel speichern</button></div>':'');
+      (report?'<div class="panel"><h3>Mitarbeiter-Auswertung</h3><div class="form form-2"><label>Von <input id="timeFrom" type="date"></label><label>Bis <input id="timeTo" type="date"></label></div><div class="row"><button class="btn primary" onclick="loadTimeReport()">Auswertung laden</button><button class="btn secondary" onclick="exportTimeReport()">CSV exportieren</button></div><div id="timeReport"></div><hr><h3>Automatische Pause</h3><div class="form form-2"><label>Ab Arbeitszeit (Minuten)<input id="timeBreakThreshold" type="number" min="1" max="1440"></label><label>Pause abziehen (Minuten)<input id="timeBreakDeduction" type="number" min="0" max="240"></label></div><button class="btn primary" onclick="saveTimeSettings()">Pausenregel speichern</button></div>':'')+(!clock&&!report?'<div class="panel"><p>Für dein Benutzerkonto ist keine Zeiterfassungs-Berechtigung hinterlegt. Bitte prüfe die Mitarbeiterrolle.</p></div>':'');
     if(clock)loadMyTimeClock();
     if(report){var d=new Date(),f=new Date();f.setDate(d.getDate()-30);document.getElementById("timeTo").value=iso(d);document.getElementById("timeFrom").value=iso(f);loadTimeReport();loadTimeSettings();}
   };
