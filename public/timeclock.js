@@ -16,6 +16,24 @@
     if(clock)loadMyTimeClock();
     if(report){var d=new Date(),f=new Date();f.setDate(d.getDate()-30);document.getElementById("timeTo").value=iso(d);document.getElementById("timeFrom").value=iso(f);loadTimeReport();loadTimeSettings();}
   };
+  window.loadMyShiftPlan=async function(){
+    var input=document.getElementById("myShiftWeek"),box=document.getElementById("myShiftPlan");if(!input||!box)return;
+    var selected=input.value;if(!selected){box.textContent="Bitte eine Woche auswählen.";return;}
+    var d=new Date(selected+"T12:00:00"),day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);
+    var from=iso(d);d.setDate(d.getDate()+6);var to=iso(d);
+    box.textContent="Lade Dienstplan…";
+    try{
+      var result=await api("/api/worktime/my-shifts?from="+from+"&to="+to);
+      var shifts=result.shifts||[];
+      var days=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"];
+      var html=days.map(function(name,index){
+        var date=new Date(from+"T12:00:00");date.setDate(date.getDate()+index);var key=iso(date);
+        var rows=shifts.filter(function(x){return String(x.shift_date).slice(0,10)===key;});
+        return "<div style='padding:10px 0;border-bottom:1px solid #e5e7eb'><strong>"+name+", "+date.toLocaleDateString("de-DE")+"</strong>"+(rows.length?rows.map(function(x){return "<div style='margin-top:5px;padding:9px;border-radius:8px;background:#fff7ed'>"+String(x.start_at).slice(0,5)+" – "+String(x.end_at).slice(0,5)+" · Pause "+Number(x.break_minutes||0)+" Min."+ (x.note?"<div class='muted'>"+esc(x.note)+"</div>":"")+"</div>";}).join(""):"<div class='muted' style='margin-top:4px'>Keine Schicht geplant</div>")+"</div>";
+      }).join("");
+      box.innerHTML=html;
+    }catch(e){box.textContent="Dienstplan konnte nicht geladen werden: "+e.message;}
+  };
   function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
   window.loadMyTimeClock=async function(){try{var d=await api("/api/time-clock/me"),active=!!d.open;document.getElementById("clockStatus").textContent=active?"Eingestempelt seit "+fmt(d.open.clock_in_at):"Nicht eingestempelt";document.getElementById("clockInBtn").disabled=active;document.getElementById("clockOutBtn").disabled=!active;document.getElementById("myTimeHistory").innerHTML=(d.history||[]).map(function(x){return "<p>"+fmt(x.clock_in_at)+" – "+fmt(x.clock_out_at)+" · Pause "+x.auto_break_minutes+" Min. · "+hours(x.net_minutes)+"</p>";}).join("")||"Noch keine Einträge.";if(window.renderMyWorktimeSummary)await window.renderMyWorktimeSummary();}catch(e){document.getElementById("clockStatus").textContent=e.message;}};
   window.submitTimeClock=async function(a){try{await api("/api/time-clock/"+a,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});await loadMyTimeClock();}catch(e){alert(e.message);}};
